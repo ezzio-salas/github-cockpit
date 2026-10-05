@@ -5,7 +5,7 @@ import CockpitCore
 ///
 /// It springs out of the row the comment belongs to and bobs gently while it is up. Its close button dismisses
 /// it, its link button copies the comment's link, and clicking anywhere else opens the comment and dismisses it.
-/// Showing another comment replaces it.
+/// Right-clicking offers the same three. Showing another comment replaces it.
 final class CommentBubblePanel: NSPanel {
     /// Space between the bubble's tail and the card.
     private static let gap: CGFloat = 4
@@ -125,8 +125,8 @@ final class CommentBubbleView: NSView {
     private let glow = CALayer()
     private let glass = NSVisualEffectView()
     private let shape = CAShapeLayer()
-    private let closeButton = NSButton()
-    private let copyButton = NSButton()
+    private let closeButton = FirstClickButton()
+    private let copyButton = FirstClickButton()
     private let content = NSStackView.column(spacing: 6)
     private var leadingInset: NSLayoutConstraint!
     private var trailingInset: NSLayoutConstraint!
@@ -405,11 +405,32 @@ final class CommentBubbleView: NSView {
         onOpen?()
     }
 
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        menu.addItem(withTitle: "Open Comment", action: #selector(open), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Copy Link", action: #selector(copyLink), keyEquivalent: "").target = self
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Dismiss", action: #selector(close), keyEquivalent: "").target = self
+        return menu
+    }
+
+    @objc private func open() {
+        onOpen?()
+    }
+
     override func mouseEntered(with event: NSEvent) {
         onHoverChange?(true)
     }
 
     override func mouseExited(with event: NSEvent) {
         onHoverChange?(false)
+    }
+}
+
+/// The bubble's panel never becomes key, so every click on it is a first click, which a plain button spends on
+/// activating the window instead of acting. This one acts on it.
+private final class FirstClickButton: NSButton {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
     }
 }

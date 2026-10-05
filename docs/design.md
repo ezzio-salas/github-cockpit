@@ -196,7 +196,8 @@ The bubble is its own floating window beside the card, left of it unless that le
 screen, with a tail aimed at the comment's row (or at the header when the row is not shown).
 It springs out of the tail with a slight overshoot, then floats a pixel or two up and down; on
 dismissal it shrinks and fades. A link button copies the comment's url, turning into a
-checkmark for a moment while the header shows `LINK COPIED`. It stays until dismissed: a
+checkmark for a moment while the header shows `LINK COPIED`. Right-clicking the bubble offers
+Open Comment, Copy Link and Dismiss. It stays until dismissed: a
 close button dismisses it, a click
 anywhere else opens the comment and dismisses it, a newer comment replaces it, and moving the
 card dismisses it. macOS skips the motion under Reduce Motion; on Linux the motion is CSS

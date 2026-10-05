@@ -110,6 +110,7 @@ its tail pointing at that row. It stays until you dismiss it:
 | Click the `×` | Dismisses the bubble. |
 | Click the link icon | Copies the comment's link; the icon turns into a checkmark and the header shows `LINK COPIED`. |
 | Click the bubble | Opens the comment in your browser and dismisses the bubble. |
+| Right-click the bubble | Menu with **Open Comment**, **Copy Link** and **Dismiss**. |
 
 Conversation comments, review summaries and inline review comments all count; your own never
 do. At launch the bubble shows the newest comment once, so you see where things stand; after

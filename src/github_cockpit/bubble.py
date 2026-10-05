@@ -9,7 +9,7 @@ from datetime import datetime
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
 
 from cockpit_core.comments import PullRequestComment  # noqa: E402
 from cockpit_core.relative_time import age  # noqa: E402
@@ -31,7 +31,8 @@ _COPIED_FEEDBACK_MILLISECONDS = 1500
 class CommentBubble(Gtk.Window):
     """It springs out next to the comment's row and bobs gently while it is up. Its close button
     dismisses it, its link button copies the comment's link, and clicking anywhere else opens the
-    comment and dismisses it. Showing another comment replaces it.
+    comment and dismisses it. Right-clicking offers the same three. Showing another comment
+    replaces it.
 
     The animations are CSS keyframes, so GTK drops them when the desktop asks for less motion.
     Without gtk4-layer-shell there is no way to place the bubble beside the card, so it is not
@@ -70,6 +71,33 @@ class CommentBubble(Gtk.Window):
         click = Gtk.GestureClick()
         click.connect("released", self._on_click)
         self.add_controller(click)
+
+        secondary = Gtk.GestureClick()
+        secondary.set_button(Gdk.BUTTON_SECONDARY)
+        secondary.connect("pressed", self._on_secondary_press)
+        self.add_controller(secondary)
+
+        actions = Gio.SimpleActionGroup()
+        for name, handler in (
+            ("open", lambda *_: self._on_click()),
+            ("copy-link", lambda *_: self._copy_link_from_menu()),
+            ("dismiss", lambda *_: self.dismiss()),
+        ):
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", handler)
+            actions.add_action(action)
+        self.insert_action_group("bubble", actions)
+
+        menu = Gio.Menu()
+        primary = Gio.Menu()
+        primary.append("Open Comment", "bubble.open")
+        primary.append("Copy Link", "bubble.copy-link")
+        menu.append_section(None, primary)
+        menu.append("Dismiss", "bubble.dismiss")
+        # Hung off the window rather than its content, which is replaced for every comment.
+        self._menu = Gtk.PopoverMenu.new_from_model(menu)
+        self._menu.set_parent(self)
+        self._menu.set_has_arrow(False)
 
     def show_comment(
         self,
@@ -206,6 +234,16 @@ class CommentBubble(Gtk.Window):
         if self._comment is not None:
             open_uri(self._comment.url)
         self.dismiss()
+
+    def _on_secondary_press(self, _gesture: Gtk.GestureClick, _n: int, x: float, y: float) -> None:
+        if self._comment is None:
+            return
+        self._menu.set_pointing_to(Gdk.Rectangle(x=int(x), y=int(y), width=1, height=1))
+        self._menu.popup()
+
+    def _copy_link_from_menu(self) -> None:
+        if self._comment is not None and self.on_copy_link is not None:
+            self.on_copy_link(self._comment.url)
 
     def _copy_link(self, button: Gtk.Button, url: str) -> None:
         if self.on_copy_link is not None:
