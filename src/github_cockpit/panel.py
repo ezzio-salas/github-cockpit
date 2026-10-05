@@ -80,6 +80,15 @@ class CockpitPanel(Gtk.ApplicationWindow):
         LayerShell.set_anchor(self, LayerShell.Edge.RIGHT, True)
         self._apply_margins()
 
+        # Initialising can still fail silently when the library was linked after
+        # libwayland, which is what happens when python is run without the LD_PRELOAD
+        # run.sh sets. Say so plainly rather than leaving only GTK's warning.
+        if not LayerShell.is_layer_window(self):
+            log.warning(
+                "gtk4-layer-shell is installed but did not take effect, so the card is an "
+                "ordinary window. Start it with run.sh, which sets the LD_PRELOAD it needs."
+            )
+
     def _apply_margins(self) -> None:
         if not HAS_LAYER_SHELL:
             return
