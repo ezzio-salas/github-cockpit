@@ -81,6 +81,14 @@ class CockpitView(Gtk.Box):
         self.card.set_valign(Gtk.Align.START)
         self.card.append(content)
         self.append(self.card)
+        self._rows: list[PullRequestRow] = []
+
+    def row_for(self, number: int, repo: str) -> PullRequestRow | None:
+        """The row showing pull request `number` in `repo`, if the card shows it."""
+        for row in self._rows:
+            if row.pull.number == number and row.pull.repo == repo:
+                return row
+        return None
 
     def apply(self, appearance: CockpitAppearance) -> None:
         """Takes effect on the title at once; the colors arrive with the reloaded stylesheet."""
@@ -97,6 +105,7 @@ class CockpitView(Gtk.Box):
             self._status.remove_css_class("stale")
 
         _remove_children(self._body)
+        self._rows = []
         if isinstance(snapshot.body, str):
             message = Gtk.Label(label=snapshot.body)
             message.add_css_class("message")
@@ -104,7 +113,7 @@ class CockpitView(Gtk.Box):
             self._body.append(message)
         else:
             for section in snapshot.body:
-                self._body.append(_section_view(section, now))
+                self._body.append(self._section_view(section, now))
 
         # Values read before a failure stay on screen, dimmed, rather than disappearing.
         if snapshot.is_stale:
@@ -113,18 +122,21 @@ class CockpitView(Gtk.Box):
             self._body.remove_css_class("stale-body")
 
 
-def _section_view(section: Section, now: datetime) -> Gtk.Widget:
-    column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-    title = Gtk.Label(label=section.name)
-    title.add_css_class("section-title")
-    title.set_xalign(0)
-    column.append(title)
 
-    rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-    for pull in section.pulls:
-        rows.append(PullRequestRow(pull, now))
-    column.append(rows)
-    return column
+    def _section_view(self, section: Section, now: datetime) -> Gtk.Widget:
+        column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        title = Gtk.Label(label=section.name)
+        title.add_css_class("section-title")
+        title.set_xalign(0)
+        column.append(title)
+
+        rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        for pull in section.pulls:
+            row = PullRequestRow(pull, now)
+            self._rows.append(row)
+            rows.append(row)
+        column.append(rows)
+        return column
 
 
 def _remove_children(box: Gtk.Box) -> None:

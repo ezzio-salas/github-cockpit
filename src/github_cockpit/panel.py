@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
 
 import gi
@@ -11,6 +12,7 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, Gio, Gtk  # noqa: E402
 
 from cockpit_core.appearance import AppearanceStore, CockpitAppearance
+from cockpit_core.comments import PullRequestComment
 
 from . import theme
 from .view import CockpitSnapshot, CockpitView
@@ -44,6 +46,8 @@ class CockpitPanel(Gtk.ApplicationWindow):
         self._css = Gtk.CssProvider()
         self._top, self._right = store.load_placement()
         self._drag_origin: tuple[int, int] | None = None
+        #: Called after the card has been dragged to a new place.
+        self.on_moved: Callable[[], None] | None = None
 
         self.set_decorated(False)
         self.set_resizable(False)
@@ -99,6 +103,30 @@ class CockpitPanel(Gtk.ApplicationWindow):
         self._right = max(0, int(start_right - dx))
         self._apply_margins()
 
+    @property
+    def placement(self) -> tuple[int, int]:
+        """The window's distance from the top and right edges of the screen, in pixels."""
+        return self._top, self._right
+
+    def anchor_y(self, comment: PullRequestComment) -> float:
+        """The height on this window a bubble about `comment` points at: the middle of its row,
+        or the card's header when the row is not shown."""
+        row = self.view.row_for(comment.number, comment.repo)
+        if row is not None:
+            found, bounds = row.compute_bounds(self)
+            if found:
+                return bounds.get_y() + bounds.get_height() / 2
+        return theme.GLOW_MARGIN + theme.PADDING + theme.HEADER_HEIGHT / 2
+
+    def screen_width(self) -> int:
+        """The width of the monitor the card is on, or 0 when it is not known yet."""
+        surface = self.get_surface()
+        display = self.get_display()
+        if surface is None or display is None:
+            return 0
+        monitor = display.get_monitor_at_surface(surface)
+        return monitor.get_geometry().width if monitor is not None else 0
+
     # MARK: - Appearance
 
     def apply(self, appearance: CockpitAppearance) -> None:
@@ -146,6 +174,8 @@ class CockpitPanel(Gtk.ApplicationWindow):
         if max(abs(dx), abs(dy)) >= theme.DRAG_THRESHOLD:
             self._move_by(dx, dy)
             self._store.save_placement(self._top, self._right)
+            if self.on_moved is not None:
+                self.on_moved()
 
     def _on_secondary_press(self, _gesture: Gtk.GestureClick, _n: int, x: float, y: float) -> None:
         self._menu.set_pointing_to(Gdk.Rectangle(x=int(x), y=int(y), width=1, height=1))

@@ -2,10 +2,10 @@ import XCTest
 @testable import CockpitCore
 
 final class PullRequestParserTests: XCTestCase {
-    /// One real row, as `gh search prs --json number,title,repository,url,isDraft,updatedAt` writes it.
+    /// One real row, as `gh search prs --json id,number,title,repository,url,isDraft,updatedAt` writes it.
     private static let sample = """
     [
-      {"isDraft": false, "number": 44,
+      {"id": "PR_kwDOJ6t0rs5m8Z1a", "isDraft": false, "number": 44,
        "repository": {"name": "material-tailwind", "nameWithOwner": "ezzio-salas/material-tailwind"},
        "title": "[Snyk] Security upgrade next from 10.2.3 to 15.5.10",
        "updatedAt": "2026-02-01T12:05:49Z",
@@ -29,7 +29,8 @@ final class PullRequestParserTests: XCTestCase {
             repo: "ezzio-salas/material-tailwind",
             url: URL(string: "https://github.com/ezzio-salas/material-tailwind/pull/44")!,
             isDraft: false,
-            updatedAt: Self.sampleUpdate
+            updatedAt: Self.sampleUpdate,
+            nodeID: "PR_kwDOJ6t0rs5m8Z1a"
         )])
         XCTAssertEqual(pulls.first?.reference, "#44")
     }

@@ -23,9 +23,10 @@ In scope:
 - One floating card with a section per list: `MINE` and `REVIEW`.
 - A click on a row opens that pull request in the browser.
 - Automatic refresh, manual refresh, quit, a remembered position.
+- A speech bubble announcing a new comment on one of those pull requests, until dismissed.
 
 Out of scope: a settings window (the config file is the interface), issues, review state,
-CI status, notifications, comment counts, more than one account, a queue long enough to
+CI status, system notifications, comment counts, more than one account, a queue long enough to
 scroll.
 
 ## Data source
@@ -173,6 +174,30 @@ pure Foundation and unit-tested; `GitHubCockpit` is the AppKit card.
 - The card's view is the only mouse target. A press that travels 3pt moves the card; a click
   is routed by position to the row under it, which opens that pull request, or anywhere else
   refreshes.
+
+## Comment bubble
+
+After a good read, one GraphQL call (`gh api graphql`, ids from the `id` field the search now
+asks for) returns `viewer.login` and, per pull request, the last three conversation comments,
+the last three reviews and each review's latest inline comment. Bodies are reduced to plain
+text: HTML comments (where bots keep metadata), tags, images and code fences go; links keep
+their words; emphasis markers go but snake_case keeps its underscores.
+
+`CommentWatch` decides what is news. The first reading announces its newest comment, so a
+launch shows where things stand. After that a comment is announced only when it is newer than
+every one already seen, so a pull request that newly joins the card does not replay an old
+comment. The signed-in person's own comments are never announced.
+
+The bubble is its own floating window beside the card, left of it unless that leaves the
+screen, with a tail aimed at the comment's row (or at the header when the row is not shown).
+It springs out of the tail with a slight overshoot, then floats a pixel or two up and down; on
+dismissal it shrinks and fades. It stays until dismissed: a close button dismisses it, a click
+anywhere else opens the comment and dismisses it, a newer comment replaces it, and moving the
+card dismisses it. macOS skips the motion under Reduce Motion; on Linux the motion is CSS
+keyframes, which GTK drops when animations are turned off. Without gtk4-layer-shell the Linux
+bubble cannot be placed beside the card, so it is not shown.
+
+A failed comment read is logged and changes nothing on the card.
 
 ## Refresh and state
 

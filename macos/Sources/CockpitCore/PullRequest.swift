@@ -10,14 +10,19 @@ public struct PullRequest: Equatable, Sendable {
     public let isDraft: Bool
     /// When it last changed, or nil when `gh` did not report it.
     public let updatedAt: Date?
+    /// GitHub's GraphQL id, which the latest comments are asked for by; nil when not reported.
+    public let nodeID: String?
 
-    public init(number: Int, title: String, repo: String, url: URL, isDraft: Bool, updatedAt: Date?) {
+    public init(
+        number: Int, title: String, repo: String, url: URL, isDraft: Bool, updatedAt: Date?, nodeID: String? = nil
+    ) {
         self.number = number
         self.title = title
         self.repo = repo
         self.url = url
         self.isDraft = isDraft
         self.updatedAt = updatedAt
+        self.nodeID = nodeID
     }
 
     /// `#412`, the short form shown beside the title.
@@ -32,6 +37,8 @@ public enum PullRequestParser {
     public enum ParseError: Error, Equatable {
         case notJSON
         case notAnArray
+        /// A GraphQL answer that carries no `data`, such as one reporting only errors.
+        case noData
     }
 
     /// Rows missing a number, title, repo or url are skipped rather than guessed at, so a change in `gh`'s
@@ -63,12 +70,13 @@ public enum PullRequestParser {
             repo: repo,
             url: url,
             isDraft: row["isDraft"] as? Bool ?? false,
-            updatedAt: (row["updatedAt"] as? String).flatMap(timestamp)
+            updatedAt: (row["updatedAt"] as? String).flatMap(timestamp),
+            nodeID: (row["id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 
     /// A whole JSON number. Foundation hands booleans and fractions back as numbers too, so both are refused here.
-    private static func integer(_ value: Any?) -> Int? {
+    static func integer(_ value: Any?) -> Int? {
         guard let number = value as? NSNumber,
               CFGetTypeID(number) != CFBooleanGetTypeID(),
               !CFNumberIsFloatType(number)
@@ -98,7 +106,7 @@ public enum PullRequestParser {
     }()
 
     /// Reads GitHub's `2026-02-01T12:05:49Z`; anything else becomes nil, which leaves the age blank.
-    private static func timestamp(_ text: String) -> Date? {
+    static func timestamp(_ text: String) -> Date? {
         zoned.date(from: text) ?? zonedWithFraction.date(from: text) ?? unzoned.date(from: text)
     }
 }

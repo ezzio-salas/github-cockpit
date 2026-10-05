@@ -36,8 +36,24 @@ final class PullRequestFetcherTests: XCTestCase {
 
         XCTAssertEqual(result, .success(
             "[search][prs][--author=@me][--state=open][--limit=3]"
-                + "[--json=number,title,repository,url,isDraft,updatedAt][--sort=updated]"
+                + "[--json=id,number,title,repository,url,isDraft,updatedAt][--sort=updated]"
         ))
+    }
+
+    func testAsksForTheLatestCommentsOnTheGivenPullRequests() async throws {
+        let cli = try fakeCLI(#"shift 4; printf '[%s]' "$@""#)
+
+        let result = await PullRequestFetcher(command: cli.path).fetchComments(nodeIDs: ["PR_a", "PR_b"])
+
+        XCTAssertEqual(result, .success("[-f][ids[]=PR_a][-f][ids[]=PR_b]"))
+    }
+
+    func testTheCommentQueryIsSentAsAGraphQLRequest() async throws {
+        let cli = try fakeCLI(#"printf '%s %s %s %s' "$1" "$2" "$3" "$(printf '%s' "$4" | head -c 6)""#)
+
+        let result = await PullRequestFetcher(command: cli.path).fetchComments(nodeIDs: ["PR_a"])
+
+        XCTAssertEqual(result, .success("api graphql -f query="))
     }
 
     func testAsksForThePullRequestsWaitingOnTheUsersReview() async throws {

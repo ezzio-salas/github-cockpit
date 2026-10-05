@@ -13,7 +13,7 @@ public struct PullRequestFetcher: Sendable {
     }
 
     /// Only what the card draws, so the reply stays small.
-    private static let fields = "number,title,repository,url,isDraft,updatedAt"
+    private static let fields = "id,number,title,repository,url,isDraft,updatedAt"
 
     private static let installDirectories = [
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin"),
@@ -43,11 +43,19 @@ public struct PullRequestFetcher: Sendable {
         await search("--review-requested=@me")
     }
 
+    /// Raw GraphQL JSON for the latest comments on the given pull requests.
+    public func fetchComments(nodeIDs: [String]) async -> Result<String, FetchError> {
+        await run(["api", "graphql", "-f", "query=\(CommentParser.query)"] + nodeIDs.flatMap { ["-f", "ids[]=\($0)"] })
+    }
+
     private func search(_ who: String) async -> Result<String, FetchError> {
-        let arguments = [
+        await run([
             "search", "prs", who, "--state=open", "--limit=\(limit)", "--json=\(Self.fields)", "--sort=updated",
-        ]
-        return await withCheckedContinuation { continuation in
+        ])
+    }
+
+    private func run(_ arguments: [String]) async -> Result<String, FetchError> {
+        await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 guard let cli = Self.resolve(command, searchDirectories: Self.installDirectories) else {
                     continuation.resume(returning: .failure(.cliNotFound))

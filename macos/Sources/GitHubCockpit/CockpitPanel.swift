@@ -5,8 +5,13 @@ import CockpitCore
 final class CockpitPanel: NSPanel {
     private static let topLeftKey = "panelTopLeft"
     private static let screenMargin: CGFloat = 12
+    /// The card's title row, which a bubble points at when its pull request has no row.
+    private static let headerHeight: CGFloat = 40
 
     private let cockpitView = CockpitView()
+
+    /// Called after the card has been dragged to a new place.
+    var onMoved: (() -> Void)?
 
     init(menu: NSMenu, onClick: @escaping () -> Void, onOpen: @escaping (PullRequest) -> Void) {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -21,7 +26,10 @@ final class CockpitPanel: NSPanel {
         cockpitView.menu = menu
         cockpitView.onClick = onClick
         cockpitView.onOpen = onOpen
-        cockpitView.onMoved = { [weak self] in self?.saveTopLeft() }
+        cockpitView.onMoved = { [weak self] in
+            self?.saveTopLeft()
+            self?.onMoved?()
+        }
         contentView = cockpitView
     }
 
@@ -39,6 +47,21 @@ final class CockpitPanel: NSPanel {
         if !isVisible {
             orderFrontRegardless()
         }
+    }
+
+    /// The card's glass on screen.
+    var cardScreenFrame: NSRect {
+        convertToScreen(cockpitView.convert(cockpitView.cardFrame, to: nil))
+    }
+
+    /// The screen rectangle a bubble about `comment` points at: its row, or the card's header when the row is
+    /// not shown.
+    func screenFrame(for comment: PullRequestComment) -> NSRect {
+        guard let row = cockpitView.rowFrame(number: comment.number, repo: comment.repo) else {
+            let card = cardScreenFrame
+            return NSRect(x: card.minX, y: card.maxY - Self.headerHeight, width: card.width, height: Self.headerHeight)
+        }
+        return convertToScreen(cockpitView.convert(row, to: nil))
     }
 
     private func saveTopLeft() {

@@ -112,6 +112,17 @@ final class CockpitView: NSView {
         }
     }
 
+    /// The card's glass, in this view's coordinates.
+    var cardFrame: NSRect {
+        surface.frame
+    }
+
+    /// Where the row for pull request `number` in `repo` is, in this view's coordinates; nil when it is not shown.
+    func rowFrame(number: Int, repo: String) -> NSRect? {
+        rows.first { $0.pullRequest.number == number && $0.pullRequest.repo == repo }
+            .map { $0.convert($0.bounds, to: self) }
+    }
+
     // MARK: - Construction
 
     /// Blurred backdrop plus a tinted, outlined surface that holds the content.

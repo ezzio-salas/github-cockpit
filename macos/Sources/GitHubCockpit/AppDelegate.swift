@@ -17,6 +17,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self?.panel.apply($0)
         self?.render()
     }
+    private lazy var bubble: CommentBubblePanel = {
+        let bubble = CommentBubblePanel()
+        bubble.onOpen = { NSWorkspace.shared.open($0) }
+        return bubble
+    }()
     private lazy var panel = CockpitPanel(
         menu: makeMenu(),
         onClick: { [weak self] in self?.refresh() },
@@ -27,10 +32,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Why the most recent fetch failed; nil after a success.
     private var failure: String?
     private var isFetching = false
+    private var commentWatch = CommentWatch()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = Self.makeMainMenu()
         panel.apply(appearanceStore.appearance)
+        // A bubble left behind by a moved card would point at nothing.
+        panel.onMoved = { [weak self] in self?.bubble.dismiss() }
         refresh()
         Timer.scheduledTimer(
             timeInterval: Self.refreshInterval, target: self, selector: #selector(refresh), userInfo: nil, repeats: true
@@ -70,7 +78,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             isFetching = false
             record(Self.sections(mine: mineResult, review: reviewResult))
             render()
+            await announceNewComment()
         }
+    }
+
+    /// Reads the latest comments on the pull requests the card shows and bubbles up the newest one that is
+    /// news. A failure here is only logged: the card never depends on it.
+    @MainActor private func announceNewComment() async {
+        guard failure == nil, let lastReading else { return }
+        let nodeIDs = lastReading.sections.flatMap(\.pullRequests).compactMap(\.nodeID)
+        guard !nodeIDs.isEmpty else { return }
+
+        let reading: CommentReading
+        do {
+            reading = try await CommentParser.parse(fetcher.fetchComments(nodeIDs: nodeIDs).get())
+        } catch {
+            log.error("Comment fetch failed: \(String(describing: error), privacy: .public)")
+            return
+        }
+        guard let comment = commentWatch.announce(reading) else { return }
+        bubble.show(
+            comment,
+            pointingAt: panel.screenFrame(for: comment),
+            beside: panel.cardScreenFrame,
+            appearance: appearanceStore.appearance,
+            now: Date()
+        )
     }
 
     private static func sections(

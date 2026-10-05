@@ -57,6 +57,22 @@ takes keyboard focus. Pull requests are re-read every 60 seconds.
 Each section lists the five most recently updated, and is hidden when it is empty. A draft
 pull request is dimmed.
 
+### New comments
+
+When someone comments on one of the pull requests on the card, a speech bubble springs out
+beside the card with the comment's author, its first few lines and the pull request it is on,
+its tail pointing at that row. It stays until you dismiss it:
+
+| Action | Result |
+| --- | --- |
+| Click the `×` | Dismisses the bubble. |
+| Click the bubble | Opens the comment in your browser and dismisses the bubble. |
+
+Conversation comments, review summaries and inline review comments all count; your own never
+do. At launch the bubble shows the newest comment once, so you see where things stand; after
+that only a comment newer than any already shown brings it up, and it replaces the one on
+screen. Moving the card dismisses it.
+
 ### When a read fails
 
 The widget only ever shows pull requests it actually read from GitHub.
@@ -129,6 +145,15 @@ Every refresh runs the GitHub CLI twice, without a terminal:
 gh search prs --author=@me           --state=open --limit=5 --sort=updated --json=…
 gh search prs --review-requested=@me --state=open --limit=5 --sort=updated --json=…
 ```
+
+Once the pull requests are on the card, one more call reads their latest comments for the
+[comment bubble](#new-comments):
+
+```sh
+gh api graphql -f query=… -f ids[]=… -f ids[]=…
+```
+
+If that call fails, the card is unaffected; the failure is only logged.
 
 The app makes no network requests of its own and never touches your token; signing in is
 entirely `gh`'s business.

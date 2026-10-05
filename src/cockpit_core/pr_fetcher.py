@@ -7,8 +7,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from .comments import COMMENTS_QUERY
+
 #: Only what the card draws, so the reply stays small.
-_FIELDS = "number,title,repository,url,isDraft,updatedAt"
+_FIELDS = "id,number,title,repository,url,isDraft,updatedAt"
 
 #: Launchers do not always inherit a login shell's PATH, so look in the usual places first.
 _INSTALL_DIRECTORIES = (
@@ -61,6 +63,13 @@ class PullRequestFetcher:
     def fetch_review_requested(self) -> str:
         """Raw JSON for the open pull requests waiting on the signed-in user's review."""
         return self._search("--review-requested=@me")
+
+    def fetch_comments(self, node_ids: list[str]) -> str:
+        """Raw GraphQL JSON for the latest comments on the given pull requests."""
+        arguments = ["api", "graphql", "-f", f"query={COMMENTS_QUERY}"]
+        for node_id in node_ids:
+            arguments += ["-f", f"ids[]={node_id}"]
+        return self._run(arguments)
 
     def _search(self, who: str) -> str:
         return self._run([
