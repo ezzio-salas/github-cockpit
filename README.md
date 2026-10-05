@@ -1,6 +1,6 @@
 # GitHub Cockpit
 
-A small frameless Linux widget that floats above your windows and shows the open pull
+A small frameless widget for Linux and macOS that floats above your windows and shows the open pull
 requests waiting on you: the ones you opened, and the ones asking for your review.
 
 <img src="docs/preview.png" alt="GitHub Cockpit showing open pull requests" width="300">
@@ -10,6 +10,9 @@ row to open it in your browser.
 
 It is the sibling of [Claude Cockpit](https://github.com/ezzio-salas/claude-cockpit) and
 keeps its look and its habits.
+
+**On macOS?** The native AppKit build lives in [`macos/`](macos); see
+[its README](macos/README.md). The rest of this page covers the Linux build.
 
 ## Requirements
 

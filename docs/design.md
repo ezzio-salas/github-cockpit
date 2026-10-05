@@ -157,6 +157,23 @@ A drag and a click share the card, so the drag gesture runs in the capture phase
 the sequence once the pointer has travelled 3pt. Past that the row underneath never fires,
 which is what keeps moving the card from opening a pull request.
 
+### macOS
+
+`macos/` is a Swift package with the same split, following Claude Cockpit's macOS build:
+`CockpitCore` (pull request parsing, the `gh` runner, relative times, the appearance) is
+pure Foundation and unit-tested; `GitHubCockpit` is the AppKit card.
+
+- The window is a borderless, non-activating `NSPanel` at the floating level that joins every
+  Space, so it sits above full-screen apps and never takes focus. The blur is an
+  `NSVisualEffectView` behind the glass.
+- Settings live in user defaults (`local.github-cockpit`) and are edited in a Personalize
+  window, offered once on first launch and afterwards from the right-click menu.
+- `gh` is looked up in `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin`, then by a
+  login `zsh`, because apps launched from Finder do not inherit the shell's `PATH`.
+- The card's view is the only mouse target. A press that travels 3pt moves the card; a click
+  is routed by position to the row under it, which opens that pull request, or anywhere else
+  refreshes.
+
 ## Refresh and state
 
 - Fetch on launch, then every 60 seconds, on a worker thread. A fetch never overlaps
