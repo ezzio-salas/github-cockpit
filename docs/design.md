@@ -154,6 +154,9 @@ float and pin it; the README has the rules. This is a fallback, not the intended
 - Click a row to open that pull request; the portal is tried first and `xdg-open` is the
   fallback, because a layer surface is not a toplevel a portal can always parent to.
 - Right-click: Refresh, Open GitHub Pull Requests, Quit.
+- Right-click on a row adds Open Pull Request and Copy Link above those. Copy Link puts the
+  pull request's url on the clipboard as plain text and shows `LINK COPIED` in the header,
+  in place of the status, for two seconds.
 
 A drag and a click share the card, so the drag gesture runs in the capture phase and claims
 the sequence once the pointer has travelled 3pt. Past that the row underneath never fires,

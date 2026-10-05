@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Ages and the stale marker move on without a fetch.
     private static let redrawInterval: TimeInterval = 30
     private static let pullRequestsPage = URL(string: "https://github.com/pulls")!
+    /// How long a confirmation such as `LINK COPIED` stays in the header.
+    private static let noticeDuration: TimeInterval = 2
 
     private let log = Logger(subsystem: "local.github-cockpit", category: "pull-requests")
     /// `defaults write local.github-cockpit cliCommand <name or path>` points the widget at another CLI.
@@ -45,6 +47,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Why the most recent fetch failed; nil after a success.
     private var failure: String?
     private var isFetching = false
+    /// A short confirmation shown in the header in place of the status until it expires.
+    private var notice: (text: String, until: Date)?
     private var commentWatch = CommentWatch()
     /// The latest comments read, which hovering a row looks up.
     private var comments: CommentReading?
@@ -61,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.apply(appearanceStore.appearance)
         // A bubble left behind by a moved card would point at nothing.
         panel.onMoved = { [weak self] in self?.bubble.dismiss() }
+        panel.rowMenuItems = { [weak self] in self?.rowMenuItems(for: $0) ?? [] }
         panel.onHoverChange = { [weak self] in
             self?.hoveredPullRequest = $0
             self?.scheduleHoverUpdate()
@@ -196,7 +201,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let now = Date()
         let isStale = lastReading != nil && failure != nil
         let status: String
-        if isFetching {
+        if let notice, notice.until > now {
+            status = notice.text
+        } else if isFetching {
             status = "SYNC"
         } else if isStale, let lastReading {
             status = "STALE · \(RelativeTime.compact(now.timeIntervalSince(lastReading.takenAt)))"
@@ -212,6 +219,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // An empty section is hidden; only when both are empty is there something to say.
         let sections = lastReading.sections.filter { !$0.pullRequests.isEmpty }
         return sections.isEmpty ? .message("NO OPEN PULL REQUESTS") : .sections(sections)
+    }
+
+    // MARK: - Row menu
+
+    private func rowMenuItems(for pullRequest: PullRequest) -> [NSMenuItem] {
+        let open = NSMenuItem(title: "Open Pull Request", action: #selector(openPullRequest(_:)), keyEquivalent: "")
+        let copy = NSMenuItem(title: "Copy Link", action: #selector(copyLink(_:)), keyEquivalent: "")
+        for item in [open, copy] {
+            item.target = self
+            item.representedObject = pullRequest.url
+        }
+        return [open, copy]
+    }
+
+    @objc private func openPullRequest(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func copyLink(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(url.absoluteString, forType: .string)
+        showNotice("LINK COPIED")
+    }
+
+    private func showNotice(_ text: String) {
+        notice = (text, Date().addingTimeInterval(Self.noticeDuration))
+        render()
+        // `render` drops an expired notice itself, so a newer one shown meanwhile survives this.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.noticeDuration) { [weak self] in self?.render() }
     }
 
     private func makeMenu() -> NSMenu {

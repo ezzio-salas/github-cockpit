@@ -82,6 +82,7 @@ The app has no taskbar entry and no tray icon; the floating card is the whole in
 | Rest the pointer on a row | Shows its latest comment beside the card. See [New comments](#new-comments). |
 | Drag the card | Moves it. The position is remembered between launches. |
 | Right-click the card | Menu with **Refresh**, **Open GitHub Pull Requests** and **Quit**. |
+| Right-click a row | The card's menu, topped with **Open Pull Request** and **Copy Link**. Copying shows `LINK COPIED` in the header for two seconds. |
 
 The card stays above other windows on every workspace, including full-screen ones, and
 never takes keyboard focus.

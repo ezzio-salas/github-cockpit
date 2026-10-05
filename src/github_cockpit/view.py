@@ -91,11 +91,12 @@ class CockpitView(Gtk.Box):
         # One controller for the whole card rather than one per row: rows are rebuilt on every
         # render, and a pointer resting on a rebuilt row should not read as having left it.
         motion = Gtk.EventControllerMotion()
-        motion.connect("motion", lambda _controller, x, y: self._set_hovered(self._pull_at(x, y)))
+        motion.connect("motion", lambda _controller, x, y: self._set_hovered(self.pull_at(x, y)))
         motion.connect("leave", lambda _controller: self._set_hovered(None))
         self.add_controller(motion)
 
-    def _pull_at(self, x: float, y: float) -> PullRequest | None:
+    def pull_at(self, x: float, y: float) -> PullRequest | None:
+        """The pull request whose row is at `x`, `y` in this view, if any."""
         widget = self.pick(x, y, Gtk.PickFlags.DEFAULT)
         while widget is not None and not isinstance(widget, PullRequestRow):
             widget = widget.get_parent()

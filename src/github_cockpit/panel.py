@@ -9,7 +9,7 @@ from datetime import datetime
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gdk, Gio, Gtk  # noqa: E402
+from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from cockpit_core.appearance import AppearanceStore, CockpitAppearance
 from cockpit_core.comments import PullRequestComment
@@ -158,7 +158,7 @@ class CockpitPanel(Gtk.ApplicationWindow):
         secondary.connect("pressed", self._on_secondary_press)
         self.view.add_controller(secondary)
 
-        self._menu = Gtk.PopoverMenu.new_from_model(self._menu_model())
+        self._menu = Gtk.PopoverMenu.new_from_model(self._menu_model(None))
         self._menu.set_parent(self.view)
         self._menu.set_has_arrow(False)
 
@@ -183,12 +183,25 @@ class CockpitPanel(Gtk.ApplicationWindow):
                 self.on_moved()
 
     def _on_secondary_press(self, _gesture: Gtk.GestureClick, _n: int, x: float, y: float) -> None:
+        self._menu.set_menu_model(self._menu_model(self.view.pull_at(x, y)))
         self._menu.set_pointing_to(Gdk.Rectangle(x=int(x), y=int(y), width=1, height=1))
         self._menu.popup()
 
-    def _menu_model(self) -> Gio.Menu:
+    def _menu_model(self, pull: PullRequest | None) -> Gio.Menu:
+        """The card's menu, with items about `pull` above it when a row was right-clicked."""
         menu = Gio.Menu()
-        menu.append("Refresh", "app.refresh")
-        menu.append("Open GitHub Pull Requests", "app.open-github")
-        menu.append("Quit GitHub Cockpit", "app.quit")
+        if pull is not None:
+            row = Gio.Menu()
+            items = (("Open Pull Request", "app.open-pr"), ("Copy Link", "app.copy-link"))
+            for label, action in items:
+                item = Gio.MenuItem.new(label, None)
+                item.set_action_and_target_value(action, GLib.Variant.new_string(pull.url))
+                row.append_item(item)
+            menu.append_section(None, row)
+
+        card = Gio.Menu()
+        card.append("Refresh", "app.refresh")
+        card.append("Open GitHub Pull Requests", "app.open-github")
+        card.append("Quit GitHub Cockpit", "app.quit")
+        menu.append_section(None, card)
         return menu

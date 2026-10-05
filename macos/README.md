@@ -46,6 +46,7 @@ The app has no Dock icon and no menu bar item; the floating card is the whole in
 | Click elsewhere on the card | Refreshes now. `SYNC` shows in the header while it reads. |
 | Drag the card | Moves it. The position is remembered between launches. |
 | Right-click the card | Menu with **Refresh**, **Open GitHub Pull Requests**, **Customize…** and **Quit GitHub Cockpit**. |
+| Right-click a row | The card's menu, topped with **Open Pull Request** and **Copy Link**. Copying shows `LINK COPIED` in the header for two seconds. |
 
 The card stays above other windows on every Space, including full-screen apps, and never
 takes keyboard focus. Pull requests are re-read every 60 seconds.
