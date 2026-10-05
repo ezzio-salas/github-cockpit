@@ -82,6 +82,7 @@ The app has no taskbar entry and no tray icon; the floating card is the whole in
 | Rest the pointer on a row | Shows its latest comment beside the card. See [New comments](#new-comments). |
 | Drag the card | Moves it. The position is remembered between launches. |
 | Right-click the card | Menu with **Refresh**, **Open GitHub Pull Requests** and **Quit**. |
+| Right-click a row | The card's menu, topped with **Open Pull Request** and **Copy Link**. Copying shows `LINK COPIED` in the header for two seconds. |
 
 The card stays above other windows on every workspace, including full-screen ones, and
 never takes keyboard focus.
@@ -107,7 +108,9 @@ its tail pointing at that row. It stays until you dismiss it:
 | Action | Result |
 | --- | --- |
 | Click the `×` | Dismisses the bubble. |
+| Click the link icon | Copies the comment's link; the icon turns into a checkmark and the header shows `LINK COPIED`. |
 | Click the bubble | Opens the comment in your browser and dismisses the bubble. |
+| Right-click the bubble | Menu with **Open Comment**, **Copy Link** and **Dismiss**. |
 
 Conversation comments, review summaries and inline review comments all count; your own never
 do. At launch the bubble shows the newest comment once, so you see where things stand; after

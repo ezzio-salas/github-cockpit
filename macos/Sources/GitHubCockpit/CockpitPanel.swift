@@ -12,6 +12,12 @@ final class CockpitPanel: NSPanel {
 
     /// Called after the card has been dragged to a new place.
     var onMoved: (() -> Void)?
+    /// Items about one pull request, shown above the card's own menu when its row is right-clicked.
+    var rowMenuItems: ((PullRequest) -> [NSMenuItem])? {
+        get { cockpitView.rowMenuItems }
+        set { cockpitView.rowMenuItems = newValue }
+    }
+
     /// Called with the pull request under the pointer whenever it changes.
     var onHoverChange: ((PullRequest?) -> Void)? {
         get { cockpitView.onHoverChange }
