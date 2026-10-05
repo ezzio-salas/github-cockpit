@@ -166,7 +166,7 @@ window.bubble-window {{
     color: {accent.rgba()};
 }}
 
-.bubble-close {{
+.bubble-button {{
     min-width: 0;
     min-height: 0;
     padding: 0;
@@ -174,8 +174,12 @@ window.bubble-window {{
     -gtk-icon-size: 10px;
 }}
 
-.bubble-close:hover {{
+.bubble-button:hover {{
     color: rgba(255, 255, 255, 1);
+}}
+
+.bubble-button.copied {{
+    color: {accent.rgba()};
 }}
 
 .bubble-text {{

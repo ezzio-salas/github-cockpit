@@ -4,12 +4,15 @@ import CockpitCore
 /// A speech bubble beside the card that shows one comment.
 ///
 /// It springs out of the row the comment belongs to and bobs gently while it is up. Its close button dismisses
-/// it; clicking anywhere else opens the comment and dismisses it too. Showing another comment replaces it.
+/// it, its link button copies the comment's link, and clicking anywhere else opens the comment and dismisses it.
+/// Right-clicking offers the same three. Showing another comment replaces it.
 final class CommentBubblePanel: NSPanel {
     /// Space between the bubble's tail and the card.
     private static let gap: CGFloat = 4
 
     var onOpen: ((URL) -> Void)?
+    /// Called with the comment's url when its link button is clicked.
+    var onCopyLink: ((URL) -> Void)?
     /// Called with the comment on screen whenever the bubble goes away.
     var onDismiss: ((PullRequestComment) -> Void)?
     /// Called when the pointer moves onto the bubble (true) or off it (false).
@@ -45,6 +48,7 @@ final class CommentBubblePanel: NSPanel {
             self?.dismiss()
         }
         view.onClose = { [weak self] in self?.dismiss() }
+        view.onCopyLink = { [weak self] in self?.onCopyLink?(comment.url) }
         view.onHoverChange = { [weak self] in self?.onHoverChange?($0) }
         let size = view.fittingSize
         let margin = CommentBubbleView.Metrics.glowMargin
@@ -81,7 +85,7 @@ final class CommentBubblePanel: NSPanel {
     }
 }
 
-/// The bubble: dark glass in the card's colors, a tail pointing at the card, and a close button.
+/// The bubble: dark glass in the card's colors, a tail pointing at the card, and link and close buttons.
 final class CommentBubbleView: NSView {
     enum Metrics {
         /// Transparent space around the bubble where its glow is drawn.
@@ -94,7 +98,9 @@ final class CommentBubbleView: NSView {
         static let tailHalfHeight: CGFloat = 7
         /// The tail's usual distance below the bubble's top.
         static let tailOffset: CGFloat = 24
-        static let closeButtonSize: CGFloat = 14
+        static let buttonSize: CGFloat = 14
+        /// How long the link button shows a checkmark after copying.
+        static let copiedFeedback: TimeInterval = 1.5
         static let bodyLineLimit = 4
     }
 
@@ -104,6 +110,7 @@ final class CommentBubbleView: NSView {
 
     var onOpen: (() -> Void)?
     var onClose: (() -> Void)?
+    var onCopyLink: (() -> Void)?
     var onHoverChange: ((Bool) -> Void)?
     var tailSide = TailSide.right {
         didSet { updateContentInsets() }
@@ -118,7 +125,8 @@ final class CommentBubbleView: NSView {
     private let glow = CALayer()
     private let glass = NSVisualEffectView()
     private let shape = CAShapeLayer()
-    private let closeButton = NSButton()
+    private let closeButton = FirstClickButton()
+    private let copyButton = FirstClickButton()
     private let content = NSStackView.column(spacing: 6)
     private var leadingInset: NSLayoutConstraint!
     private var trailingInset: NSLayoutConstraint!
@@ -188,16 +196,9 @@ final class CommentBubbleView: NSView {
         ))
         author.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let age = NSTextField.label(Self.detailText(RelativeTime.age(of: comment.createdAt, now: now)))
-        closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Dismiss")?
-            .withSymbolConfiguration(.init(pointSize: 8, weight: .bold))
-        closeButton.isBordered = false
-        closeButton.contentTintColor = Theme.secondaryText
-        closeButton.toolTip = "Dismiss"
-        closeButton.target = self
-        closeButton.action = #selector(close)
-        closeButton.widthAnchor.constraint(equalToConstant: Metrics.closeButtonSize).isActive = true
-        closeButton.heightAnchor.constraint(equalToConstant: Metrics.closeButtonSize).isActive = true
-        let trailing = NSStackView(views: [age, closeButton])
+        Self.configure(copyButton, symbol: "link", toolTip: "Copy Link", target: self, action: #selector(copyLink))
+        Self.configure(closeButton, symbol: "xmark", toolTip: "Dismiss", target: self, action: #selector(close))
+        let trailing = NSStackView(views: [age, copyButton, closeButton])
         trailing.spacing = 6
         trailing.alignment = .centerY
 
@@ -214,6 +215,22 @@ final class CommentBubbleView: NSView {
         content.addFullWidth(body)
         content.addFullWidth(source)
         content.setCustomSpacing(8, after: body)
+    }
+
+    private static func configure(_ button: NSButton, symbol: String, toolTip: String, target: AnyObject, action: Selector) {
+        button.image = symbolImage(symbol, description: toolTip)
+        button.isBordered = false
+        button.contentTintColor = Theme.secondaryText
+        button.toolTip = toolTip
+        button.target = target
+        button.action = action
+        button.widthAnchor.constraint(equalToConstant: Metrics.buttonSize).isActive = true
+        button.heightAnchor.constraint(equalToConstant: Metrics.buttonSize).isActive = true
+    }
+
+    private static func symbolImage(_ name: String, description: String) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: description)?
+            .withSymbolConfiguration(.init(pointSize: 8, weight: .bold))
     }
 
     private static func detailText(_ text: String) -> NSAttributedString {
@@ -363,10 +380,21 @@ final class CommentBubbleView: NSView {
         onClose?()
     }
 
-    // Apart from the close button, the text never takes the mouse; the rest of the bubble is one click target.
+    @objc private func copyLink() {
+        onCopyLink?()
+        // A checkmark in the accent color confirms the copy where the eye already is.
+        copyButton.image = Self.symbolImage("checkmark", description: "Copied")
+        copyButton.contentTintColor = accent
+        DispatchQueue.main.asyncAfter(deadline: .now() + Metrics.copiedFeedback) { [weak self] in
+            self?.copyButton.image = Self.symbolImage("link", description: "Copy Link")
+            self?.copyButton.contentTintColor = Theme.secondaryText
+        }
+    }
+
+    // Apart from the buttons, the text never takes the mouse; the rest of the bubble is one click target.
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let hit = super.hitTest(point) else { return nil }
-        return hit.isDescendant(of: closeButton) ? hit : self
+        return hit.isDescendant(of: closeButton) || hit.isDescendant(of: copyButton) ? hit : self
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
@@ -377,11 +405,32 @@ final class CommentBubbleView: NSView {
         onOpen?()
     }
 
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        menu.addItem(withTitle: "Open Comment", action: #selector(open), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Copy Link", action: #selector(copyLink), keyEquivalent: "").target = self
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Dismiss", action: #selector(close), keyEquivalent: "").target = self
+        return menu
+    }
+
+    @objc private func open() {
+        onOpen?()
+    }
+
     override func mouseEntered(with event: NSEvent) {
         onHoverChange?(true)
     }
 
     override func mouseExited(with event: NSEvent) {
         onHoverChange?(false)
+    }
+}
+
+/// The bubble's panel never becomes key, so every click on it is a first click, which a plain button spends on
+/// activating the window instead of acting. This one acts on it.
+private final class FirstClickButton: NSButton {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
     }
 }

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from cockpit_core.appearance import AppearanceStore
 from cockpit_core.comments import (
@@ -47,6 +47,8 @@ REDRAW_INTERVAL = 30
 #: not flicker.
 HOVER_DELAY_MS = 350
 UNHOVER_DELAY_MS = 300
+#: How long a confirmation such as `LINK COPIED` stays in the header.
+NOTICE_SECONDS = 2
 _PULL_REQUESTS_URL = "https://github.com/pulls"
 
 _MESSAGES = {
@@ -84,6 +86,8 @@ class CockpitApplication(Gtk.Application):
         #: Why the most recent fetch failed; None after a success.
         self._failure: str | None = None
         self._is_fetching = False
+        #: A short confirmation shown in the header in place of the status, and when it expires.
+        self._notice: tuple[str, datetime] | None = None
 
     def do_startup(self) -> None:
         Gtk.Application.do_startup(self)
@@ -96,6 +100,14 @@ class CockpitApplication(Gtk.Application):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", handler)
             self.add_action(action)
+        # Row menu items carry their pull request's url as the action's parameter.
+        for name, handler in (
+            ("open-pr", lambda _action, url: open_uri(url.get_string())),
+            ("copy-link", lambda _action, url: self._copy_link(url.get_string())),
+        ):
+            action = Gio.SimpleAction.new(name, GLib.VariantType.new("s"))
+            action.connect("activate", handler)
+            self.add_action(action)
 
     def do_activate(self) -> None:
         if self._panel is None:
@@ -105,6 +117,7 @@ class CockpitApplication(Gtk.Application):
             self._panel.on_moved = self._bubble.dismiss
             self._bubble.on_dismiss = self._on_bubble_dismissed
             self._bubble.on_hover_change = self._on_bubble_hover
+            self._bubble.on_copy_link = self._copy_link
             self._panel.set_on_hover_change(self._on_row_hover)
             self._panel.apply(self._store.load())
             self._render()
@@ -246,7 +259,9 @@ class CockpitApplication(Gtk.Application):
         now = _now()
         is_stale = self._reading is not None and self._failure is not None
 
-        if self._is_fetching:
+        if self._notice is not None and now < self._notice[1]:
+            status = self._notice[0]
+        elif self._is_fetching:
             status = "SYNC"
         elif is_stale and self._reading is not None:
             status = f"STALE · {compact((now - self._reading[1]).total_seconds())}"
@@ -256,6 +271,26 @@ class CockpitApplication(Gtk.Application):
         self._panel.render(
             CockpitSnapshot(body=self._body(), status=status, is_stale=is_stale), now
         )
+
+    def _copy_link(self, url: str) -> None:
+        display = Gdk.Display.get_default()
+        if display is None:
+            return
+        content = Gdk.ContentProvider.new_for_bytes(
+            "text/plain;charset=utf-8", GLib.Bytes.new(url.encode("utf-8"))
+        )
+        display.get_clipboard().set_content(content)
+        self._show_notice("LINK COPIED")
+
+    def _show_notice(self, text: str) -> None:
+        self._notice = (text, _now() + timedelta(seconds=NOTICE_SECONDS))
+        self._render()
+        GLib.timeout_add_seconds(NOTICE_SECONDS, self._on_notice_expired)
+
+    def _on_notice_expired(self) -> bool:
+        # `_render` drops an expired notice itself, so a newer one shown meanwhile survives this.
+        self._render()
+        return GLib.SOURCE_REMOVE
 
     def _body(self) -> tuple[Section, ...] | str:
         """The sections to draw, or the one message that stands in for them."""

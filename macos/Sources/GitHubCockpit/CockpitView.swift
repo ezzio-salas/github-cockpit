@@ -37,6 +37,8 @@ final class CockpitView: NSView {
     var onMoved: (() -> Void)?
     /// Reports the pull request under the pointer whenever it changes; nil once the pointer leaves the rows.
     var onHoverChange: ((PullRequest?) -> Void)?
+    /// Items about one pull request, shown above the card's own menu when a row is right-clicked.
+    var rowMenuItems: ((PullRequest) -> [NSMenuItem])?
 
     private let glow = CALayer()
     private let surface = NSView()
@@ -257,6 +259,20 @@ final class CockpitView: NSView {
         } else {
             onClick?()
         }
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard let cardMenu = menu,
+              let row = row(at: convert(event.locationInWindow, from: nil)),
+              let items = rowMenuItems?(row.pullRequest)
+        else { return menu }
+
+        let rowMenu = NSMenu()
+        items.forEach(rowMenu.addItem)
+        rowMenu.addItem(.separator())
+        // Copies, because a menu item belongs to one menu at a time.
+        cardMenu.items.forEach { rowMenu.addItem($0.copy() as! NSMenuItem) }
+        return rowMenu
     }
 
     override func mouseMoved(with event: NSEvent) {

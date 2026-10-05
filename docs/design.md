@@ -154,6 +154,9 @@ float and pin it; the README has the rules. This is a fallback, not the intended
 - Click a row to open that pull request; the portal is tried first and `xdg-open` is the
   fallback, because a layer surface is not a toplevel a portal can always parent to.
 - Right-click: Refresh, Open GitHub Pull Requests, Quit.
+- Right-click on a row adds Open Pull Request and Copy Link above those. Copy Link puts the
+  pull request's url on the clipboard as plain text and shows `LINK COPIED` in the header,
+  in place of the status, for two seconds.
 
 A drag and a click share the card, so the drag gesture runs in the capture phase and claims
 the sequence once the pointer has travelled 3pt. Past that the row underneath never fires,
@@ -192,7 +195,10 @@ comment. The signed-in person's own comments are never announced.
 The bubble is its own floating window beside the card, left of it unless that leaves the
 screen, with a tail aimed at the comment's row (or at the header when the row is not shown).
 It springs out of the tail with a slight overshoot, then floats a pixel or two up and down; on
-dismissal it shrinks and fades. It stays until dismissed: a close button dismisses it, a click
+dismissal it shrinks and fades. A link button copies the comment's url, turning into a
+checkmark for a moment while the header shows `LINK COPIED`. Right-clicking the bubble offers
+Open Comment, Copy Link and Dismiss. It stays until dismissed: a
+close button dismisses it, a click
 anywhere else opens the comment and dismisses it, a newer comment replaces it, and moving the
 card dismisses it. macOS skips the motion under Reduce Motion; on Linux the motion is CSS
 keyframes, which GTK drops when animations are turned off. Without gtk4-layer-shell the Linux

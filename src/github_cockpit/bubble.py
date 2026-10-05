@@ -9,7 +9,7 @@ from datetime import datetime
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
 
 from cockpit_core.comments import PullRequestComment  # noqa: E402
 from cockpit_core.relative_time import age  # noqa: E402
@@ -24,12 +24,15 @@ log = logging.getLogger(__name__)
 NAMESPACE = "github-cockpit-bubble"
 #: Matches the `bubble-leave` animation in the stylesheet.
 _LEAVE_MILLISECONDS = 220
+#: How long the link button shows a checkmark after copying.
+_COPIED_FEEDBACK_MILLISECONDS = 1500
 
 
 class CommentBubble(Gtk.Window):
     """It springs out next to the comment's row and bobs gently while it is up. Its close button
-    dismisses it; clicking anywhere else opens the comment and dismisses it too. Showing another
-    comment replaces it.
+    dismisses it, its link button copies the comment's link, and clicking anywhere else opens the
+    comment and dismisses it. Right-clicking offers the same three. Showing another comment
+    replaces it.
 
     The animations are CSS keyframes, so GTK drops them when the desktop asks for less motion.
     Without gtk4-layer-shell there is no way to place the bubble beside the card, so it is not
@@ -44,6 +47,8 @@ class CommentBubble(Gtk.Window):
         self._comment: PullRequestComment | None = None
         #: Called with the comment on screen whenever the bubble goes away.
         self.on_dismiss: Callable[[PullRequestComment], None] | None = None
+        #: Called with the comment's url when its link button is clicked.
+        self.on_copy_link: Callable[[str], None] | None = None
         #: Called when the pointer moves onto the bubble (True) or off it (False).
         self.on_hover_change: Callable[[bool], None] | None = None
         self._pop: Gtk.Widget | None = None
@@ -66,6 +71,33 @@ class CommentBubble(Gtk.Window):
         click = Gtk.GestureClick()
         click.connect("released", self._on_click)
         self.add_controller(click)
+
+        secondary = Gtk.GestureClick()
+        secondary.set_button(Gdk.BUTTON_SECONDARY)
+        secondary.connect("pressed", self._on_secondary_press)
+        self.add_controller(secondary)
+
+        actions = Gio.SimpleActionGroup()
+        for name, handler in (
+            ("open", lambda *_: self._on_click()),
+            ("copy-link", lambda *_: self._copy_link_from_menu()),
+            ("dismiss", lambda *_: self.dismiss()),
+        ):
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", handler)
+            actions.add_action(action)
+        self.insert_action_group("bubble", actions)
+
+        menu = Gio.Menu()
+        primary = Gio.Menu()
+        primary.append("Open Comment", "bubble.open")
+        primary.append("Copy Link", "bubble.copy-link")
+        menu.append_section(None, primary)
+        menu.append("Dismiss", "bubble.dismiss")
+        # Hung off the window rather than its content, which is replaced for every comment.
+        self._menu = Gtk.PopoverMenu.new_from_model(menu)
+        self._menu.set_parent(self)
+        self._menu.set_has_arrow(False)
 
     def show_comment(
         self,
@@ -128,16 +160,15 @@ class CommentBubble(Gtk.Window):
     def _build(
         self, comment: PullRequestComment, now: datetime, *, tail_on_right: bool, tail_offset: float
     ) -> Gtk.Widget:
-        close = Gtk.Button.new_from_icon_name("window-close-symbolic")
-        close.set_has_frame(False)
-        close.set_can_focus(False)
-        close.add_css_class("bubble-close")
-        close.set_tooltip_text("Dismiss")
+        copy = _icon_button("insert-link-symbolic", "Copy Link")
+        copy.connect("clicked", lambda button: self._copy_link(button, comment.url))
+        close = _icon_button("window-close-symbolic", "Dismiss")
         close.connect("clicked", lambda _button: self.dismiss())
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         header.append(_label(f"@{comment.author}", "bubble-author", expand=True))
         header.append(_label(age(comment.created_at, now), "bubble-detail"))
+        header.append(copy)
         header.append(close)
 
         body = Gtk.Label(label=comment.text)
@@ -204,6 +235,30 @@ class CommentBubble(Gtk.Window):
             open_uri(self._comment.url)
         self.dismiss()
 
+    def _on_secondary_press(self, _gesture: Gtk.GestureClick, _n: int, x: float, y: float) -> None:
+        if self._comment is None:
+            return
+        self._menu.set_pointing_to(Gdk.Rectangle(x=int(x), y=int(y), width=1, height=1))
+        self._menu.popup()
+
+    def _copy_link_from_menu(self) -> None:
+        if self._comment is not None and self.on_copy_link is not None:
+            self.on_copy_link(self._comment.url)
+
+    def _copy_link(self, button: Gtk.Button, url: str) -> None:
+        if self.on_copy_link is not None:
+            self.on_copy_link(url)
+        # A checkmark in the accent color confirms the copy where the eye already is.
+        button.set_icon_name("object-select-symbolic")
+        button.add_css_class("copied")
+
+        def restore() -> bool:
+            button.set_icon_name("insert-link-symbolic")
+            button.remove_css_class("copied")
+            return GLib.SOURCE_REMOVE
+
+        GLib.timeout_add(_COPIED_FEEDBACK_MILLISECONDS, restore)
+
     def _report_hover(self, is_on_bubble: bool) -> None:
         if self.on_hover_change is not None:
             self.on_hover_change(is_on_bubble)
@@ -218,6 +273,17 @@ class CommentBubble(Gtk.Window):
         if self._leaving:
             GLib.source_remove(self._leaving)
             self._leaving = 0
+
+
+def _icon_button(icon: str, tooltip: str) -> Gtk.Button:
+    """A small frameless button in the bubble's header. It claims its own clicks, so pressing it
+    never also opens the comment."""
+    button = Gtk.Button.new_from_icon_name(icon)
+    button.set_has_frame(False)
+    button.set_can_focus(False)
+    button.add_css_class("bubble-button")
+    button.set_tooltip_text(tooltip)
+    return button
 
 
 def _label(text: str, style: str, *, expand: bool = False) -> Gtk.Label:
