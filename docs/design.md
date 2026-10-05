@@ -23,9 +23,11 @@ In scope:
 - One floating card with a section per list: `MINE` and `REVIEW`.
 - A click on a row opens that pull request in the browser.
 - Automatic refresh, manual refresh, quit, a remembered position.
+- A speech bubble announcing a new comment on one of those pull requests, until dismissed,
+  and previewing a pull request's latest comment while the pointer rests on its row.
 
 Out of scope: a settings window (the config file is the interface), issues, review state,
-CI status, notifications, comment counts, more than one account, a queue long enough to
+CI status, system notifications, comment counts, more than one account, a queue long enough to
 scroll.
 
 ## Data source
@@ -156,6 +158,55 @@ float and pin it; the README has the rules. This is a fallback, not the intended
 A drag and a click share the card, so the drag gesture runs in the capture phase and claims
 the sequence once the pointer has travelled 3pt. Past that the row underneath never fires,
 which is what keeps moving the card from opening a pull request.
+
+### macOS
+
+`macos/` is a Swift package with the same split, following Claude Cockpit's macOS build:
+`CockpitCore` (pull request parsing, the `gh` runner, relative times, the appearance) is
+pure Foundation and unit-tested; `GitHubCockpit` is the AppKit card.
+
+- The window is a borderless, non-activating `NSPanel` at the floating level that joins every
+  Space, so it sits above full-screen apps and never takes focus. The blur is an
+  `NSVisualEffectView` behind the glass.
+- Settings live in user defaults (`local.github-cockpit`) and are edited in a Personalize
+  window, offered once on first launch and afterwards from the right-click menu.
+- `gh` is looked up in `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin`, then by a
+  login `zsh`, because apps launched from Finder do not inherit the shell's `PATH`.
+- The card's view is the only mouse target. A press that travels 3pt moves the card; a click
+  is routed by position to the row under it, which opens that pull request, or anywhere else
+  refreshes.
+
+## Comment bubble
+
+After a good read, one GraphQL call (`gh api graphql`, ids from the `id` field the search now
+asks for) returns `viewer.login` and, per pull request, the last three conversation comments,
+the last three reviews and each review's latest inline comment. Bodies are reduced to plain
+text: HTML comments (where bots keep metadata), tags, images and code fences go; links keep
+their words; emphasis markers go but snake_case keeps its underscores.
+
+`CommentWatch` decides what is news. The first reading announces its newest comment, so a
+launch shows where things stand. After that a comment is announced only when it is newer than
+every one already seen, so a pull request that newly joins the card does not replay an old
+comment. The signed-in person's own comments are never announced.
+
+The bubble is its own floating window beside the card, left of it unless that leaves the
+screen, with a tail aimed at the comment's row (or at the header when the row is not shown).
+It springs out of the tail with a slight overshoot, then floats a pixel or two up and down; on
+dismissal it shrinks and fades. It stays until dismissed: a close button dismisses it, a click
+anywhere else opens the comment and dismisses it, a newer comment replaces it, and moving the
+card dismisses it. macOS skips the motion under Reduce Motion; on Linux the motion is CSS
+keyframes, which GTK drops when animations are turned off. Without gtk4-layer-shell the Linux
+bubble cannot be placed beside the card, so it is not shown.
+
+Hovering a row previews that pull request's latest comment, from anyone, in the same bubble,
+after the pointer has rested 0.35s. The preview stays while the pointer is on the row or the
+bubble and ends 0.3s after it leaves both, so sweeping across the card does not flicker and
+the pointer can cross the gap to click. A new-comment bubble covered by a preview comes back
+when the preview ends; one that arrives during a preview waits for it. The card reports the
+row under the pointer from one motion controller rather than one per row, because rows are
+rebuilt on every render and a pointer resting on a rebuilt row should not read as leaving it.
+
+A failed comment read is logged and changes nothing on the card.
 
 ## Refresh and state
 

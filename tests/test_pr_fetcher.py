@@ -35,7 +35,7 @@ def test_asks_for_the_pull_requests_the_user_opened(tmp_path):
     assert "--state=open" in arguments
     assert "--limit=5" in arguments
     assert "--sort=updated" in arguments
-    assert "--json=number,title,repository,url,isDraft,updatedAt" in arguments
+    assert "--json=id,number,title,repository,url,isDraft,updatedAt" in arguments
 
 
 def test_asks_for_the_pull_requests_waiting_on_the_users_review(tmp_path):
@@ -109,3 +109,13 @@ def test_the_cli_never_reads_the_widgets_stdin(tmp_path):
     # A `gh` waiting on input would otherwise hang the fetch until the timeout.
     gh = fake_gh(tmp_path, "cat; echo done")
     assert PullRequestFetcher(command=str(gh), timeout=5).fetch_mine().strip() == "done"
+
+
+def test_asks_for_the_latest_comments_on_the_given_pull_requests(tmp_path):
+    # The query spans lines, so arguments are separated by NUL rather than newlines.
+    gh = fake_gh(tmp_path, 'printf "%s\\0" "$@"')
+    arguments = PullRequestFetcher(command=str(gh)).fetch_comments(["PR_a", "PR_b"]).split("\0")
+
+    assert arguments[:3] == ["api", "graphql", "-f"]
+    assert arguments[3].startswith("query=")
+    assert arguments[4:8] == ["-f", "ids[]=PR_a", "-f", "ids[]=PR_b"]

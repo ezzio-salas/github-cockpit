@@ -19,6 +19,8 @@ class PullRequest:
     is_draft: bool
     #: When it last changed, or None when `gh` did not report it.
     updated_at: datetime | None
+    #: GitHub's GraphQL id, which the latest comments are asked for by; None when not reported.
+    node_id: str | None = None
 
     @property
     def reference(self) -> str:
@@ -59,6 +61,7 @@ def _pull_request(row: dict) -> PullRequest | None:
     url = row.get("url")
     repository = row.get("repository")
     repo = repository.get("nameWithOwner") if isinstance(repository, dict) else None
+    node_id = row.get("id")
 
     if not isinstance(number, int) or not title or not url or not repo:
         return None
@@ -69,11 +72,12 @@ def _pull_request(row: dict) -> PullRequest | None:
         repo=str(repo),
         url=str(url),
         is_draft=bool(row.get("isDraft", False)),
-        updated_at=_timestamp(row.get("updatedAt")),
+        updated_at=parse_timestamp(row.get("updatedAt")),
+        node_id=node_id if isinstance(node_id, str) and node_id else None,
     )
 
 
-def _timestamp(value: object) -> datetime | None:
+def parse_timestamp(value: object) -> datetime | None:
     """Reads GitHub's `2026-02-01T12:05:49Z`; anything else becomes None."""
     if not isinstance(value, str) or not value:
         return None

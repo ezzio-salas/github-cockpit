@@ -4,9 +4,10 @@ import pytest
 
 from cockpit_core.pull_request import ParseError, PullRequest, parse
 
-#: One real row, as `gh search prs --json number,title,repository,url,isDraft,updatedAt` writes it.
+#: One real row, as `gh search prs --json id,number,title,repository,url,isDraft,updatedAt`
+#: writes it.
 SAMPLE = """[
-  {"isDraft": false, "number": 44,
+  {"id": "PR_kwDOJ6t0rs5m8Z1a", "isDraft": false, "number": 44,
    "repository": {"name": "material-tailwind", "nameWithOwner": "ezzio-salas/material-tailwind"},
    "title": "[Snyk] Security upgrade next from 10.2.3 to 15.5.10",
    "updatedAt": "2026-02-01T12:05:49Z",
@@ -24,6 +25,7 @@ def test_reads_the_fields_the_card_shows():
         url="https://github.com/ezzio-salas/material-tailwind/pull/44",
         is_draft=False,
         updated_at=datetime(2026, 2, 1, 12, 5, 49, tzinfo=timezone.utc),
+        node_id="PR_kwDOJ6t0rs5m8Z1a",
     )
     assert pull.reference == "#44"
 
