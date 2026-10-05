@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+import signal
 import threading
 from datetime import datetime, timedelta, timezone
 
 import gi
 
 gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from cockpit_core.appearance import AppearanceStore
@@ -91,6 +93,7 @@ class CockpitApplication(Gtk.Application):
 
     def do_startup(self) -> None:
         Gtk.Application.do_startup(self)
+        self._quit_on_signals()
         fonts.ensure_display_font()
         for name, handler in (
             ("refresh", lambda *_: self.refresh()),
@@ -108,6 +111,21 @@ class CockpitApplication(Gtk.Application):
             action = Gio.SimpleAction.new(name, GLib.VariantType.new("s"))
             action.connect("activate", handler)
             self.add_action(action)
+
+    def _quit_on_signals(self) -> None:
+        """Leaves quietly on Ctrl+C or a stop from the service manager.
+
+        Python's own SIGINT handler raises KeyboardInterrupt out of the GTK main loop,
+        which ends the widget on a traceback as though it had crashed. These run on the
+        main loop instead, so the shutdown is the ordinary one.
+        """
+        for number in (signal.SIGINT, signal.SIGTERM):
+            GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, number, self._on_signal)
+
+    def _on_signal(self) -> bool:
+        log.info("Asked to stop; quitting")
+        self.quit()
+        return GLib.SOURCE_REMOVE
 
     def do_activate(self) -> None:
         if self._panel is None:
