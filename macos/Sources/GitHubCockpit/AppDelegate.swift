@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var bubble: CommentBubblePanel = {
         let bubble = CommentBubblePanel()
         bubble.onOpen = { NSWorkspace.shared.open($0) }
+        bubble.onCopyLink = { [weak self] in self?.copyToClipboard($0) }
         bubble.onDismiss = { [weak self] dismissed in
             if dismissed == self?.announced { self?.announced = nil }
             self?.previewed = nil
@@ -240,6 +241,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func copyLink(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
+        copyToClipboard(url)
+    }
+
+    private func copyToClipboard(_ url: URL) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(url.absoluteString, forType: .string)

@@ -117,6 +117,7 @@ class CockpitApplication(Gtk.Application):
             self._panel.on_moved = self._bubble.dismiss
             self._bubble.on_dismiss = self._on_bubble_dismissed
             self._bubble.on_hover_change = self._on_bubble_hover
+            self._bubble.on_copy_link = self._copy_link
             self._panel.set_on_hover_change(self._on_row_hover)
             self._panel.apply(self._store.load())
             self._render()
