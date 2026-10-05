@@ -23,7 +23,8 @@ In scope:
 - One floating card with a section per list: `MINE` and `REVIEW`.
 - A click on a row opens that pull request in the browser.
 - Automatic refresh, manual refresh, quit, a remembered position.
-- A speech bubble announcing a new comment on one of those pull requests, until dismissed.
+- A speech bubble announcing a new comment on one of those pull requests, until dismissed,
+  and previewing a pull request's latest comment while the pointer rests on its row.
 
 Out of scope: a settings window (the config file is the interface), issues, review state,
 CI status, system notifications, comment counts, more than one account, a queue long enough to
@@ -196,6 +197,14 @@ anywhere else opens the comment and dismisses it, a newer comment replaces it, a
 card dismisses it. macOS skips the motion under Reduce Motion; on Linux the motion is CSS
 keyframes, which GTK drops when animations are turned off. Without gtk4-layer-shell the Linux
 bubble cannot be placed beside the card, so it is not shown.
+
+Hovering a row previews that pull request's latest comment, from anyone, in the same bubble,
+after the pointer has rested 0.35s. The preview stays while the pointer is on the row or the
+bubble and ends 0.3s after it leaves both, so sweeping across the card does not flicker and
+the pointer can cross the gap to click. A new-comment bubble covered by a preview comes back
+when the preview ends; one that arrives during a preview waits for it. The card reports the
+row under the pointer from one motion controller rather than one per row, because rows are
+rebuilt on every render and a pointer resting on a rebuilt row should not read as leaving it.
 
 A failed comment read is logged and changes nothing on the card.
 

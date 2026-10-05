@@ -17,9 +17,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self?.panel.apply($0)
         self?.render()
     }
+    /// How long the pointer rests on a row before its comment shows, and how long the comment outlasts the
+    /// pointer leaving, so sweeping across the card or crossing to the bubble does not flicker.
+    private static let hoverDelay: TimeInterval = 0.35
+    private static let unhoverDelay: TimeInterval = 0.3
+
     private lazy var bubble: CommentBubblePanel = {
         let bubble = CommentBubblePanel()
         bubble.onOpen = { NSWorkspace.shared.open($0) }
+        bubble.onDismiss = { [weak self] dismissed in
+            if dismissed == self?.announced { self?.announced = nil }
+            self?.previewed = nil
+        }
+        bubble.onHoverChange = { [weak self] in
+            self?.isPointerOnBubble = $0
+            self?.scheduleHoverUpdate()
+        }
         return bubble
     }()
     private lazy var panel = CockpitPanel(
@@ -33,12 +46,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var failure: String?
     private var isFetching = false
     private var commentWatch = CommentWatch()
+    /// The latest comments read, which hovering a row looks up.
+    private var comments: CommentReading?
+    /// A new comment shown until it is dismissed; a hover preview covers it for a while, then gives way to it.
+    private var announced: PullRequestComment?
+    /// The comment shown because the pointer rests on its row.
+    private var previewed: PullRequestComment?
+    private var hoveredPullRequest: PullRequest?
+    private var isPointerOnBubble = false
+    private var hoverUpdate: DispatchWorkItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = Self.makeMainMenu()
         panel.apply(appearanceStore.appearance)
         // A bubble left behind by a moved card would point at nothing.
         panel.onMoved = { [weak self] in self?.bubble.dismiss() }
+        panel.onHoverChange = { [weak self] in
+            self?.hoveredPullRequest = $0
+            self?.scheduleHoverUpdate()
+        }
         refresh()
         Timer.scheduledTimer(
             timeInterval: Self.refreshInterval, target: self, selector: #selector(refresh), userInfo: nil, repeats: true
@@ -96,7 +122,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             log.error("Comment fetch failed: \(String(describing: error), privacy: .public)")
             return
         }
+        comments = reading
         guard let comment = commentWatch.announce(reading) else { return }
+        announced = comment
+        // A hover preview keeps the bubble until the pointer moves on; the announcement follows it.
+        if previewed == nil {
+            showBubble(comment)
+        }
+    }
+
+    // MARK: - Hover
+
+    private func scheduleHoverUpdate() {
+        hoverUpdate?.cancel()
+        let update = DispatchWorkItem { [weak self] in self?.updateHoverBubble() }
+        hoverUpdate = update
+        let delay = hoveredPullRequest == nil ? Self.unhoverDelay : Self.hoverDelay
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: update)
+    }
+
+    /// Shows the latest comment on the row under the pointer. Once the pointer is on neither a row with comments
+    /// nor the bubble, puts back what was there before.
+    private func updateHoverBubble() {
+        let hovered = hoveredPullRequest.flatMap { comments?.latestComment(number: $0.number, repo: $0.repo) }
+        if let hovered {
+            guard hovered != bubble.comment else { return }
+            previewed = hovered
+            showBubble(hovered)
+        } else if !isPointerOnBubble, previewed != nil {
+            previewed = nil
+            if let announced {
+                showBubble(announced)
+            } else {
+                bubble.dismiss()
+            }
+        }
+    }
+
+    private func showBubble(_ comment: PullRequestComment) {
         bubble.show(
             comment,
             pointingAt: panel.screenFrame(for: comment),

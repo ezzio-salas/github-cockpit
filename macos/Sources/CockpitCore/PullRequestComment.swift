@@ -32,6 +32,13 @@ public struct CommentReading: Equatable, Sendable {
         self.viewer = viewer
         self.comments = comments
     }
+
+    /// The newest comment on one pull request, whoever wrote it; nil when it has none.
+    public func latestComment(number: Int, repo: String) -> PullRequestComment? {
+        comments
+            .filter { $0.number == number && $0.repo == repo }
+            .max { $0.createdAt < $1.createdAt }
+    }
 }
 
 /// Reads the answer to `query`, and reduces comment bodies to plain text.

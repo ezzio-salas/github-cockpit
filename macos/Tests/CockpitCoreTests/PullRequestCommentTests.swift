@@ -150,3 +150,22 @@ final class CommentWatchTests: XCTestCase {
         XCTAssertNil(watch.announce(CommentReading(viewer: "me", comments: [])))
     }
 }
+
+final class CommentReadingTests: XCTestCase {
+    func testTheLatestCommentOnAPullRequestIsItsNewestFromAnyone() {
+        let reading = CommentReading(viewer: "me", comments: [
+            comment(minute: 1, text: "old"),
+            comment(author: "me", minute: 8, text: "mine"),
+            comment(minute: 9, text: "other pull", number: 7),
+        ])
+
+        XCTAssertEqual(reading.latestComment(number: 81, repo: "a/b")?.text, "mine")
+    }
+
+    func testAPullRequestWithoutCommentsHasNoLatestComment() {
+        let reading = CommentReading(viewer: "me", comments: [comment(number: 7)])
+
+        XCTAssertNil(reading.latestComment(number: 81, repo: "a/b"))
+        XCTAssertNil(reading.latestComment(number: 7, repo: "c/d"))
+    }
+}

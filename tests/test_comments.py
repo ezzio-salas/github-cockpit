@@ -161,3 +161,23 @@ def test_your_own_comments_are_never_news():
 
 def test_nothing_to_announce_when_there_are_no_comments():
     assert CommentWatch().announce(CommentReading("me", ())) is None
+
+
+# MARK: - CommentReading.latest_on
+
+
+def test_the_latest_comment_on_a_pull_request_is_its_newest_from_anyone():
+    reading = CommentReading("me", (
+        comment(minute=1, text="old"),
+        comment(author="me", minute=8, text="mine"),
+        comment(minute=9, text="other pull", number=7),
+    ))
+
+    assert reading.latest_on(81, "a/b").text == "mine"
+
+
+def test_a_pull_request_without_comments_has_no_latest_comment():
+    reading = CommentReading("me", (comment(number=7),))
+
+    assert reading.latest_on(81, "a/b") is None
+    assert reading.latest_on(7, "c/d") is None

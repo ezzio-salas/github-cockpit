@@ -13,6 +13,7 @@ from gi.repository import Gdk, Gio, Gtk  # noqa: E402
 
 from cockpit_core.appearance import AppearanceStore, CockpitAppearance
 from cockpit_core.comments import PullRequestComment
+from cockpit_core.pull_request import PullRequest
 
 from . import theme
 from .view import CockpitSnapshot, CockpitView
@@ -102,6 +103,10 @@ class CockpitPanel(Gtk.ApplicationWindow):
         self._top = max(0, int(start_top + dy))
         self._right = max(0, int(start_right - dx))
         self._apply_margins()
+
+    def set_on_hover_change(self, callback: Callable[[PullRequest | None], None]) -> None:
+        """Called with the pull request under the pointer whenever it changes."""
+        self.view.on_hover_change = callback
 
     @property
     def placement(self) -> tuple[int, int]:

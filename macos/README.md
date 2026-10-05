@@ -42,6 +42,7 @@ The app has no Dock icon and no menu bar item; the floating card is the whole in
 | Action | Result |
 | --- | --- |
 | Click a row | Opens that pull request in your browser. |
+| Rest the pointer on a row | Shows its latest comment beside the card. See [New comments](#new-comments). |
 | Click elsewhere on the card | Refreshes now. `SYNC` shows in the header while it reads. |
 | Drag the card | Moves it. The position is remembered between launches. |
 | Right-click the card | Menu with **Refresh**, **Open GitHub Pull Requests**, **Customize…** and **Quit GitHub Cockpit**. |
@@ -72,6 +73,12 @@ Conversation comments, review summaries and inline review comments all count; yo
 do. At launch the bubble shows the newest comment once, so you see where things stand; after
 that only a comment newer than any already shown brings it up, and it replaces the one on
 screen. Moving the card dismisses it.
+
+Rest the pointer on a row to see that pull request's latest comment in the same bubble,
+whoever wrote it. It stays while the pointer is on the row or on the bubble, so you can move
+across to click it, and goes away shortly after the pointer leaves both. A new-comment bubble
+that was up comes back once the pointer moves away. A pull request without comments shows
+nothing.
 
 ### When a read fails
 

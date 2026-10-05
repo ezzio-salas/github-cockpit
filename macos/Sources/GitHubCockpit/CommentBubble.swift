@@ -1,16 +1,22 @@
 import AppKit
 import CockpitCore
 
-/// A speech bubble beside the card that announces a new comment until it is dismissed.
+/// A speech bubble beside the card that shows one comment.
 ///
 /// It springs out of the row the comment belongs to and bobs gently while it is up. Its close button dismisses
-/// it; clicking anywhere else opens the comment and dismisses it too. A newer comment replaces it.
+/// it; clicking anywhere else opens the comment and dismisses it too. Showing another comment replaces it.
 final class CommentBubblePanel: NSPanel {
     /// Space between the bubble's tail and the card.
     private static let gap: CGFloat = 4
 
     var onOpen: ((URL) -> Void)?
+    /// Called with the comment on screen whenever the bubble goes away.
+    var onDismiss: ((PullRequestComment) -> Void)?
+    /// Called when the pointer moves onto the bubble (true) or off it (false).
+    var onHoverChange: ((Bool) -> Void)?
 
+    /// The comment on screen; nil when the bubble is hidden or leaving.
+    private(set) var comment: PullRequestComment?
     private var bubbleView: CommentBubbleView?
 
     init() {
@@ -39,6 +45,7 @@ final class CommentBubblePanel: NSPanel {
             self?.dismiss()
         }
         view.onClose = { [weak self] in self?.dismiss() }
+        view.onHoverChange = { [weak self] in self?.onHoverChange?($0) }
         let size = view.fittingSize
         let margin = CommentBubbleView.Metrics.glowMargin
 
@@ -53,6 +60,7 @@ final class CommentBubblePanel: NSPanel {
         origin.y = top - size.height
         view.tailOffset = top - margin - anchor.midY
 
+        self.comment = comment
         bubbleView = view
         contentView = view
         setFrame(NSRect(origin: origin, size: size), display: true)
@@ -62,8 +70,10 @@ final class CommentBubblePanel: NSPanel {
     }
 
     func dismiss() {
-        guard let view = bubbleView else { return }
+        guard let view = bubbleView, let comment else { return }
         bubbleView = nil
+        self.comment = nil
+        onDismiss?(comment)
         view.animateOut { [weak self] in
             // A new bubble may have arrived while this one was leaving.
             if self?.bubbleView == nil { self?.orderOut(nil) }
@@ -94,6 +104,7 @@ final class CommentBubbleView: NSView {
 
     var onOpen: (() -> Void)?
     var onClose: (() -> Void)?
+    var onHoverChange: ((Bool) -> Void)?
     var tailSide = TailSide.right {
         didSet { updateContentInsets() }
     }
@@ -159,6 +170,10 @@ final class CommentBubbleView: NSView {
             trailingInset,
         ])
         updateContentInsets()
+
+        addTrackingArea(NSTrackingArea(
+            rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self
+        ))
     }
 
     required init?(coder: NSCoder) {
@@ -360,5 +375,13 @@ final class CommentBubbleView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         onOpen?()
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        onHoverChange?(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onHoverChange?(false)
     }
 }

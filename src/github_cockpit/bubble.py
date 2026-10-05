@@ -1,8 +1,9 @@
-"""A speech bubble beside the card that announces a new comment until it is dismissed."""
+"""A speech bubble beside the card that shows one comment."""
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
 
 import gi
@@ -27,8 +28,8 @@ _LEAVE_MILLISECONDS = 220
 
 class CommentBubble(Gtk.Window):
     """It springs out next to the comment's row and bobs gently while it is up. Its close button
-    dismisses it; clicking anywhere else opens the comment and dismisses it too. A newer comment
-    replaces it.
+    dismisses it; clicking anywhere else opens the comment and dismisses it too. Showing another
+    comment replaces it.
 
     The animations are CSS keyframes, so GTK drops them when the desktop asks for less motion.
     Without gtk4-layer-shell there is no way to place the bubble beside the card, so it is not
@@ -41,6 +42,10 @@ class CommentBubble(Gtk.Window):
         self.set_resizable(False)
         self.add_css_class("bubble-window")
         self._comment: PullRequestComment | None = None
+        #: Called with the comment on screen whenever the bubble goes away.
+        self.on_dismiss: Callable[[PullRequestComment], None] | None = None
+        #: Called when the pointer moves onto the bubble (True) or off it (False).
+        self.on_hover_change: Callable[[bool], None] | None = None
         self._pop: Gtk.Widget | None = None
         self._leaving = 0
 
@@ -51,6 +56,11 @@ class CommentBubble(Gtk.Window):
             LayerShell.set_keyboard_mode(self, LayerShell.KeyboardMode.NONE)
             LayerShell.set_anchor(self, LayerShell.Edge.TOP, True)
             LayerShell.set_anchor(self, LayerShell.Edge.RIGHT, True)
+
+        hover = Gtk.EventControllerMotion()
+        hover.connect("enter", lambda *_: self._report_hover(True))
+        hover.connect("leave", lambda *_: self._report_hover(False))
+        self.add_controller(hover)
 
         # The close button claims its own clicks, so this one only sees the rest of the bubble.
         click = Gtk.GestureClick()
@@ -99,10 +109,17 @@ class CommentBubble(Gtk.Window):
         self.set_child(bubble)
         self.present()
 
+    @property
+    def comment(self) -> PullRequestComment | None:
+        """The comment on screen; None when the bubble is hidden or leaving."""
+        return None if self._leaving else self._comment
+
     def dismiss(self) -> None:
         """Plays the leaving animation, then hides."""
         if self._comment is None or self._pop is None or self._leaving:
             return
+        if self.on_dismiss is not None:
+            self.on_dismiss(self._comment)
         self._pop.add_css_class("leaving")
         self._leaving = GLib.timeout_add(_LEAVE_MILLISECONDS, self._on_left)
 
@@ -186,6 +203,10 @@ class CommentBubble(Gtk.Window):
         if self._comment is not None:
             open_uri(self._comment.url)
         self.dismiss()
+
+    def _report_hover(self, is_on_bubble: bool) -> None:
+        if self.on_hover_change is not None:
+            self.on_hover_change(is_on_bubble)
 
     def _on_left(self) -> bool:
         self._leaving = 0

@@ -55,6 +55,11 @@ class CommentReading:
     viewer: str
     comments: tuple[PullRequestComment, ...]
 
+    def latest_on(self, number: int, repo: str) -> PullRequestComment | None:
+        """The newest comment on one pull request, whoever wrote it; None when it has none."""
+        on_pull = [c for c in self.comments if c.number == number and c.repo == repo]
+        return max(on_pull, key=lambda comment: comment.created_at, default=None)
+
 
 def parse_comments(text: str) -> CommentReading:
     """Reads the answer to `COMMENTS_QUERY`.

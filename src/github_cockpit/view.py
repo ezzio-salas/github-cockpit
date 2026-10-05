@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -82,6 +83,30 @@ class CockpitView(Gtk.Box):
         self.card.append(content)
         self.append(self.card)
         self._rows: list[PullRequestRow] = []
+        #: Reports the pull request under the pointer whenever it changes; None once it leaves
+        #: the rows.
+        self.on_hover_change: Callable[[PullRequest | None], None] | None = None
+        self._hovered: PullRequest | None = None
+
+        # One controller for the whole card rather than one per row: rows are rebuilt on every
+        # render, and a pointer resting on a rebuilt row should not read as having left it.
+        motion = Gtk.EventControllerMotion()
+        motion.connect("motion", lambda _controller, x, y: self._set_hovered(self._pull_at(x, y)))
+        motion.connect("leave", lambda _controller: self._set_hovered(None))
+        self.add_controller(motion)
+
+    def _pull_at(self, x: float, y: float) -> PullRequest | None:
+        widget = self.pick(x, y, Gtk.PickFlags.DEFAULT)
+        while widget is not None and not isinstance(widget, PullRequestRow):
+            widget = widget.get_parent()
+        return widget.pull if widget is not None else None
+
+    def _set_hovered(self, pull: PullRequest | None) -> None:
+        if pull == self._hovered:
+            return
+        self._hovered = pull
+        if self.on_hover_change is not None:
+            self.on_hover_change(pull)
 
     def row_for(self, number: int, repo: str) -> PullRequestRow | None:
         """The row showing pull request `number` in `repo`, if the card shows it."""

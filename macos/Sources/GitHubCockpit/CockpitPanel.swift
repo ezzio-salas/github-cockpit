@@ -12,6 +12,11 @@ final class CockpitPanel: NSPanel {
 
     /// Called after the card has been dragged to a new place.
     var onMoved: (() -> Void)?
+    /// Called with the pull request under the pointer whenever it changes.
+    var onHoverChange: ((PullRequest?) -> Void)? {
+        get { cockpitView.onHoverChange }
+        set { cockpitView.onHoverChange = newValue }
+    }
 
     init(menu: NSMenu, onClick: @escaping () -> Void, onOpen: @escaping (PullRequest) -> Void) {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)

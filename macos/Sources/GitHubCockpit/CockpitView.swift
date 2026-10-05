@@ -35,6 +35,8 @@ final class CockpitView: NSView {
     var onClick: (() -> Void)?
     var onOpen: ((PullRequest) -> Void)?
     var onMoved: (() -> Void)?
+    /// Reports the pull request under the pointer whenever it changes; nil once the pointer leaves the rows.
+    var onHoverChange: ((PullRequest?) -> Void)?
 
     private let glow = CALayer()
     private let surface = NSView()
@@ -42,6 +44,7 @@ final class CockpitView: NSView {
     private let statusLabel = NSTextField.label(NSAttributedString())
     private let bodyStack = NSStackView.column(spacing: 18)
     private var rows: [PullRequestRowView] = []
+    private var hoveredPullRequest: PullRequest?
     private var accent = NSColor(CockpitAppearance.standard.accent)
     private var drag: (mouseStart: NSPoint, windowStart: NSPoint, didMove: Bool)?
 
@@ -267,6 +270,10 @@ final class CockpitView: NSView {
     private func updateHover(at point: NSPoint?) {
         let hovered = point.flatMap(row(at:))
         rows.forEach { $0.isHovered = $0 === hovered }
+        // Rows are rebuilt on every render, so the pull request, not the row, says whether anything changed.
+        guard hovered?.pullRequest != hoveredPullRequest else { return }
+        hoveredPullRequest = hovered?.pullRequest
+        onHoverChange?(hoveredPullRequest)
     }
 
     private func row(at point: NSPoint) -> PullRequestRowView? {
