@@ -1,0 +1,135 @@
+"""The glass card: a header, then one section per list of pull requests."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+from gi.repository import Gtk  # noqa: E402
+
+from cockpit_core.appearance import CockpitAppearance
+from cockpit_core.pull_request import PullRequest
+
+from . import theme
+from .pr_row import PullRequestRow
+
+
+@dataclass(frozen=True)
+class Section:
+    """A titled list of pull requests, such as `MINE` or `REVIEW`."""
+
+    name: str
+    pulls: tuple[PullRequest, ...]
+
+
+@dataclass(frozen=True)
+class CockpitSnapshot:
+    """What the widget shows at one moment."""
+
+    #: The sections to draw, or a single message to show in their place.
+    body: tuple[Section, ...] | str
+    #: Short header note such as `SYNC` or `STALE · 2m`; empty when there is nothing to report.
+    status: str
+    is_stale: bool
+
+
+class CockpitView(Gtk.Box):
+    """The card. Dragging it moves the window; clicking a row opens that pull request."""
+
+    def __init__(self) -> None:
+        super().__init__(orientation=Gtk.Orientation.VERTICAL)
+        # The glow is drawn by the card's box-shadow, which needs transparent room around it.
+        self.set_margin_top(theme.GLOW_MARGIN)
+        self.set_margin_bottom(theme.GLOW_MARGIN)
+        self.set_margin_start(theme.GLOW_MARGIN)
+        self.set_margin_end(theme.GLOW_MARGIN)
+
+        self._title = Gtk.Label(label=CockpitAppearance().title)
+        self._title.add_css_class("section-title")
+        self._title.set_xalign(0)
+
+        self._status = Gtk.Label(label="")
+        self._status.add_css_class("status")
+        self._status.set_halign(Gtk.Align.END)
+
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self._title.set_hexpand(True)
+        header.append(self._title)
+        header.append(self._status)
+
+        self._body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        content.set_margin_top(theme.PADDING)
+        content.set_margin_bottom(theme.PADDING)
+        content.set_margin_start(theme.PADDING)
+        content.set_margin_end(theme.PADDING)
+        content.append(header)
+        content.append(self._body)
+
+        self.card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.card.add_css_class("card")
+        self.card.set_size_request(theme.CARD_WIDTH, -1)
+        # Without layer-shell the compositor may hand the window more room than the card
+        # needs; the card keeps its own width rather than stretching to fill it.
+        self.card.set_hexpand(False)
+        self.card.set_vexpand(False)
+        self.card.set_halign(Gtk.Align.CENTER)
+        self.card.set_valign(Gtk.Align.START)
+        self.card.append(content)
+        self.append(self.card)
+
+    def apply(self, appearance: CockpitAppearance) -> None:
+        """Takes effect on the title at once; the colors arrive with the reloaded stylesheet."""
+        self._title.set_text(appearance.title)
+
+    def render(self, snapshot: CockpitSnapshot, now: datetime) -> None:
+        self._status.set_text(snapshot.status)
+        # An empty label still claims a line's height, which would nudge the header as the
+        # status comes and goes.
+        self._status.set_visible(bool(snapshot.status))
+        if snapshot.is_stale:
+            self._status.add_css_class("stale")
+        else:
+            self._status.remove_css_class("stale")
+
+        _remove_children(self._body)
+        if isinstance(snapshot.body, str):
+            message = Gtk.Label(label=snapshot.body)
+            message.add_css_class("message")
+            message.set_xalign(0)
+            self._body.append(message)
+        else:
+            for section in snapshot.body:
+                self._body.append(_section_view(section, now))
+
+        # Values read before a failure stay on screen, dimmed, rather than disappearing.
+        if snapshot.is_stale:
+            self._body.add_css_class("stale-body")
+        else:
+            self._body.remove_css_class("stale-body")
+
+
+def _section_view(section: Section, now: datetime) -> Gtk.Widget:
+    column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+    title = Gtk.Label(label=section.name)
+    title.add_css_class("section-title")
+    title.set_xalign(0)
+    column.append(title)
+
+    rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+    for pull in section.pulls:
+        rows.append(PullRequestRow(pull, now))
+    column.append(rows)
+    return column
+
+
+def _remove_children(box: Gtk.Box) -> None:
+    child = box.get_first_child()
+    while child is not None:
+        following = child.get_next_sibling()
+        box.remove(child)
+        child = following
