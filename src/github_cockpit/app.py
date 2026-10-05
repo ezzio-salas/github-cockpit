@@ -32,6 +32,7 @@ from cockpit_core.relative_time import compact
 
 from . import fonts
 from .bubble import CommentBubble
+from .customize import CustomizeWindow
 from .panel import CockpitPanel
 from .pr_row import open_uri
 from .view import CockpitSnapshot, Section
@@ -68,6 +69,7 @@ class CockpitApplication(Gtk.Application):
         self._store = AppearanceStore()
         self._fetcher = PullRequestFetcher(command=self._store.load_cli_command())
         self._panel: CockpitPanel | None = None
+        self._customize: CustomizeWindow | None = None
         self._bubble: CommentBubble | None = None
         self._comment_watch = CommentWatch()
         #: The latest comments read, which hovering a row looks up.
@@ -96,6 +98,7 @@ class CockpitApplication(Gtk.Application):
             ("refresh", lambda *_: self.refresh()),
             ("quit", lambda *_: self.quit()),
             ("open-github", lambda *_: open_uri(_PULL_REQUESTS_URL)),
+            ("customize", lambda *_: self.show_customization()),
         ):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", handler)
@@ -125,7 +128,34 @@ class CockpitApplication(Gtk.Application):
             self.refresh()
             GLib.timeout_add_seconds(REFRESH_INTERVAL, self._on_refresh_tick)
             GLib.timeout_add_seconds(REDRAW_INTERVAL, self._on_redraw_tick)
+            self._offer_customization_on_first_launch()
         self._panel.present()
+
+    # MARK: - Personalizing
+
+    def show_customization(self) -> None:
+        """Opens the Personalize window, building it the first time it is asked for."""
+        if self._customize is None:
+            self._customize = CustomizeWindow(self, self._store, self._on_appearance_changed)
+            self._customize.connect("close-request", self._on_customize_closed)
+        self._customize.present()
+
+    def _on_customize_closed(self, *_args) -> bool:
+        # Destroyed rather than hidden, so the next open reads the file afresh.
+        self._customize = None
+        return False
+
+    def _on_appearance_changed(self, appearance) -> None:
+        if self._panel is not None:
+            self._panel.apply(appearance)
+            self._render()
+
+    def _offer_customization_on_first_launch(self) -> None:
+        """The first launch offers personalization once; afterwards it is in the card's menu."""
+        if self._store.has_offered_customization:
+            return
+        self._store.has_offered_customization = True
+        self.show_customization()
 
     # MARK: - Polling
 

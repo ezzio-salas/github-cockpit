@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -8,6 +9,7 @@ from cockpit_core.appearance import (
     AppearanceStore,
     CockpitAppearance,
     HexColor,
+    default_config_path,
     normalized_title,
 )
 
@@ -163,29 +165,67 @@ def test_the_config_directory_ignores_an_empty_or_relative_xdg_config_home(
     monkeypatch, value, uses_the_variable
 ):
     # The XDG spec says a value that is unset, empty or relative is to be ignored.
-    import importlib
-
     monkeypatch.setenv("XDG_CONFIG_HOME", value)
-    module = importlib.reload(importlib.import_module("cockpit_core.appearance"))
-    try:
-        path = module.default_config_path()
-        assert path.is_absolute()
-        assert path.is_relative_to(value) is uses_the_variable
-    finally:
-        monkeypatch.undo()
-        importlib.reload(module)
+
+    path = default_config_path()
+
+    assert path.is_absolute()
+    assert path.is_relative_to(value) is uses_the_variable
 
 
 def test_the_config_directory_falls_back_to_dot_config(monkeypatch):
-    import importlib
-    from pathlib import Path
-
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    module = importlib.reload(importlib.import_module("cockpit_core.appearance"))
-    try:
-        assert module.default_config_path() == (
-            Path.home() / ".config/github-cockpit/config.json"
+    assert default_config_path() == Path.home() / ".config/github-cockpit/config.json"
+
+
+def test_reset_puts_the_look_back_to_the_defaults(store):
+    store.save(
+        CockpitAppearance(
+            title="work",
+            accent=HexColor.from_hex("#B6FF5C"),
+            border=HexColor.from_hex("#FF4FD8"),
+            glow=HexColor.from_hex("#FF9A3D"),
         )
-    finally:
-        monkeypatch.undo()
-        importlib.reload(module)
+    )
+    store.reset()
+    assert store.load() == CockpitAppearance()
+
+
+def test_reset_leaves_the_position_and_the_cli_alone(store):
+    # Reset to Defaults is about the look; it should not move the card or sign it out.
+    store.path.parent.mkdir(parents=True, exist_ok=True)
+    store.path.write_text(json.dumps({"cliCommand": "gh-work"}))
+    store.save_placement(40, 20)
+    store.save(CockpitAppearance(title="work"))
+
+    store.reset()
+
+    assert store.load_placement() == (40, 20)
+    assert store.load_cli_command() == "gh-work"
+
+
+def test_reset_on_an_untouched_config_is_harmless(store):
+    store.reset()
+    assert store.load() == CockpitAppearance()
+
+
+def test_the_personalize_window_is_offered_once(store):
+    assert store.has_offered_customization is False
+
+    store.has_offered_customization = True
+    assert store.has_offered_customization is True
+    # A second launch reads the same file and must not offer again.
+    assert AppearanceStore(store.path).has_offered_customization is True
+
+
+def test_being_offered_the_window_survives_a_later_save(store):
+    store.has_offered_customization = True
+    store.save(CockpitAppearance(title="work"))
+    store.save_placement(40, 20)
+    assert store.has_offered_customization is True
+
+
+def test_resetting_the_look_does_not_make_the_window_offer_itself_again(store):
+    store.has_offered_customization = True
+    store.reset()
+    assert store.has_offered_customization is True

@@ -211,6 +211,7 @@ class CockpitPanel(Gtk.ApplicationWindow):
         card = Gio.Menu()
         card.append("Refresh", "app.refresh")
         card.append("Open GitHub Pull Requests", "app.open-github")
+        card.append("Customize…", "app.customize")
         card.append("Quit GitHub Cockpit", "app.quit")
         menu.append_section(None, card)
         return menu

@@ -81,7 +81,7 @@ The app has no taskbar entry and no tray icon; the floating card is the whole in
 | Click a row | Opens that pull request in your browser. |
 | Rest the pointer on a row | Shows its latest comment beside the card. See [New comments](#new-comments). |
 | Drag the card | Moves it. The position is remembered between launches. |
-| Right-click the card | Menu with **Refresh**, **Open GitHub Pull Requests** and **Quit**. |
+| Right-click the card | Menu with **Refresh**, **Open GitHub Pull Requests**, **Customize…** and **Quit**. |
 | Right-click a row | The card's menu, topped with **Open Pull Request** and **Copy Link**. Copying shows `LINK COPIED` in the header for two seconds. |
 
 The card stays above other windows on every workspace, including full-screen ones, and
@@ -144,9 +144,26 @@ The widget only ever shows pull requests it actually read from GitHub.
 
 ## Personalizing
 
-Settings live in `~/.config/github-cockpit/config.json`. The file is created the first time
-the card is moved; until then every value is the default. Restart the widget after editing
-it.
+The first time the widget opens, a **Personalize GitHub Cockpit** window offers four
+settings. Close it to keep the defaults; open it again any time with right-click →
+**Customize…**.
+
+| Setting | Default | Notes |
+| --- | --- | --- |
+| Title | `GITHUB` | Shown in capitals, up to 14 characters. Leave it blank for the default. |
+| Text color | cyan (`#4FE8FF`) | The section titles, the status note and the pull request numbers. |
+| Border color | cyan (`#4FE8FF`) | The thin outline of the card. |
+| Glow color | cyan (`#4FE8FF`) | The soft halo around the card. |
+
+Changes show on the card as you make them and are saved immediately. **Reset to Defaults**
+restores all four, and leaves the card where it is and signed in to the same account. The
+stale marker stays amber whatever text color you pick, because there the color is the
+warning.
+
+### The config file
+
+The same settings live in `~/.config/github-cockpit/config.json`, which can be edited by
+hand. Restart the widget afterwards.
 
 ```json
 {
@@ -167,6 +184,8 @@ it.
 | `glowColor` | cyan `#4FE8FF` | The soft halo around the card. |
 | `marginTop` | `12` | Distance from the top of the screen, in pixels. |
 | `marginRight` | `12` | Distance from the right of the screen. Dragging the card writes both. |
+| `cliCommand` | `gh` | The GitHub CLI to run; see [Using another GitHub account](#using-another-github-account). |
+| `hasOfferedCustomization` | `false` | Set once the Personalize window has been shown. |
 
 An unreadable file, or a single unreadable value in it, falls back to the default rather
 than stopping the widget.

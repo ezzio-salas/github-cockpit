@@ -25,10 +25,10 @@ In scope:
 - Automatic refresh, manual refresh, quit, a remembered position.
 - A speech bubble announcing a new comment on one of those pull requests, until dismissed,
   and previewing a pull request's latest comment while the pointer rests on its row.
+- A Personalize window for the title and the three colors, on both platforms.
 
-Out of scope: a settings window (the config file is the interface), issues, review state,
-CI status, system notifications, comment counts, more than one account, a queue long enough to
-scroll.
+Out of scope: issues, review state, CI status, system notifications, comment counts, more
+than one account, a queue long enough to scroll.
 
 ## Data source
 
@@ -153,7 +153,7 @@ float and pin it; the README has the rules. This is a fallback, not the intended
 - Drag anywhere to move. The position is saved as margins from the top and right edges.
 - Click a row to open that pull request; the portal is tried first and `xdg-open` is the
   fallback, because a layer surface is not a toplevel a portal can always parent to.
-- Right-click: Refresh, Open GitHub Pull Requests, Quit.
+- Right-click: Refresh, Open GitHub Pull Requests, Customize…, Quit.
 - Right-click on a row adds Open Pull Request and Copy Link above those. Copy Link puts the
   pull request's url on the clipboard as plain text and shows `LINK COPIED` in the header,
   in place of the status, for two seconds.
@@ -161,6 +161,23 @@ float and pin it; the README has the rules. This is a fallback, not the intended
 A drag and a click share the card, so the drag gesture runs in the capture phase and claims
 the sequence once the pointer has travelled 3pt. Past that the row underneath never fires,
 which is what keeps moving the card from opening a pull request.
+
+**Personalizing**
+
+`customize.py` is an ordinary `Gtk.ApplicationWindow`, a port of the macOS
+`CustomizationWindowController` and a sibling of Claude Cockpit's. It is not modal, so the
+card keeps refreshing behind it, and every change is saved and applied at once.
+
+- A title entry capped at 14 characters, and three `Gtk.ColorButton`s for the accent, the
+  border and the glow. A title left at the default shows as the entry's placeholder, so the
+  field reads as nothing chosen rather than as a value the person typed.
+- A flag guards the fields while they are repopulated, so filling them in does not save
+  over what is being loaded.
+- `AppearanceStore.reset` clears only the four appearance keys. The position and the chosen
+  CLI are not part of the look, so Reset to Defaults does not move the card or sign it in to
+  another account.
+- `hasOfferedCustomization` in the config file records that the window has been shown, so a
+  first launch offers it once and later launches do not.
 
 ### macOS
 
