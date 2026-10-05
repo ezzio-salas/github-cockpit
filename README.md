@@ -221,17 +221,61 @@ shell's `PATH`. The widget looks for `gh` in `~/.local/bin`, mise's shims,
 `/usr/local/bin` and `/usr/bin`, then on `PATH`. Make sure it is in one of those, or set
 `cliCommand` to its full path.
 
-**The card is an ordinary window** — `gtk4-layer-shell` is missing; the log says so at
-startup. Install it (`sudo pacman -S gtk4-layer-shell`). If you would rather not, tell your
-compositor to treat the window as a widget:
+**The card is an ordinary window** — either `gtk4-layer-shell` is missing, or it was
+loaded too late to take effect. The log says which at startup. Install it
+(`sudo pacman -S gtk4-layer-shell`) and start the widget with `run.sh`, which sets the
+`LD_PRELOAD` the library needs; running `python -m github_cockpit` directly does not, and
+the card silently becomes an ordinary window.
+
+If you would rather not install it, tell the compositor to treat the window as a widget.
+The syntax depends on the version (`hyprctl version`). From 0.53, in
+`~/.config/hypr/hyprland.conf`:
 
 ```conf
-# ~/.config/hypr/hyprland.conf
-windowrulev2 = float,    class:^(local\.github-cockpit)$
-windowrulev2 = pin,      class:^(local\.github-cockpit)$
+windowrule {
+    name = github-cockpit
+    match:class = ^(local\.github-cockpit)$
+    float = yes
+    pin = yes
+    move = monitor_w-340 60
+    no_blur = yes
+}
+```
+
+From 0.55, if you have moved to `~/.config/hypr/hyprland.lua`:
+
+```lua
+hl.window_rule({
+  name    = "github-cockpit",
+  match   = { class = "local.github-cockpit" },
+  float   = true,
+  pin     = true,
+  move    = { "monitor_w-340", "60" },
+  no_blur = true,
+})
+```
+
+Before 0.53:
+
+```conf
+windowrulev2 = float, class:^(local\.github-cockpit)$
+windowrulev2 = pin, class:^(local\.github-cockpit)$
+windowrulev2 = move 100%-340 60, class:^(local\.github-cockpit)$
+windowrulev2 = noblur, class:^(local\.github-cockpit)$
+```
+
+Leave out `no_focus` (`nofocus`): the card is used by clicking it, and a row that cannot
+take the click cannot open its pull request.
+
+The card draws its own border and glow. If your theme also draws them — Omarchy's Tron
+Legacy theme puts a cyan bloom around the focused window, for example — you get two. Turn
+the compositor's off for this window by adding `no_shadow`, `border_size = 0` and
+`rounding = 0` to the rule, or before 0.53:
+
+```conf
+windowrulev2 = noshadow, class:^(local\.github-cockpit)$
 windowrulev2 = noborder, class:^(local\.github-cockpit)$
-windowrulev2 = noblur,   class:^(local\.github-cockpit)$
-windowrulev2 = nofocus,  class:^(local\.github-cockpit)$
+windowrulev2 = rounding 0, class:^(local\.github-cockpit)$
 ```
 
 **The labels are not in Orbitron** — The font is copied to

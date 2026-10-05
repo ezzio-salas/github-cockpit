@@ -119,3 +119,10 @@ def test_asks_for_the_latest_comments_on_the_given_pull_requests(tmp_path):
     assert arguments[:3] == ["api", "graphql", "-f"]
     assert arguments[3].startswith("query=")
     assert arguments[4:8] == ["-f", "ids[]=PR_a", "-f", "ids[]=PR_b"]
+
+
+def test_a_command_under_a_home_that_does_not_exist_is_a_missing_cli(tmp_path):
+    # `~nosuchuser/...` has no home to expand to, and pathlib raises RuntimeError rather
+    # than returning. Left untyped it would escape the poll and strand the card on SYNC.
+    with pytest.raises(CliNotFound):
+        PullRequestFetcher(command="~nosuchuser/bin/gh").fetch_mine()

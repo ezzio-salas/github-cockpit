@@ -146,9 +146,18 @@ DEFAULT_MARGIN = 12
 DEFAULT_CLI_COMMAND = "gh"
 
 
+def config_home() -> Path:
+    """The directory `XDG_CONFIG_HOME` names.
+
+    The specification says a value that is unset, empty or relative is to be ignored, so
+    those give `~/.config`.
+    """
+    value = os.environ.get("XDG_CONFIG_HOME", "")
+    return Path(value) if os.path.isabs(value) else Path.home() / ".config"
+
+
 def default_config_path() -> Path:
-    base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-    return Path(base) / "github-cockpit" / "config.json"
+    return config_home() / "github-cockpit" / "config.json"
 
 
 def _as_int(value: object, fallback: int) -> int:

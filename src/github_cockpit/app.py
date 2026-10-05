@@ -142,6 +142,10 @@ class CockpitApplication(Gtk.Application):
             GLib.idle_add(self._on_fetched, sections, None)
         except (FetchError, ParseError) as error:
             GLib.idle_add(self._on_fetched, None, error)
+        except Exception as error:  # noqa: BLE001
+            # Anything unforeseen still has to come back, or `_is_fetching` stays set and
+            # the card sits on SYNC until it is restarted.
+            GLib.idle_add(self._on_fetched, None, error)
             return
         self._fetch_comments(sections)
 
@@ -234,7 +238,10 @@ class CockpitApplication(Gtk.Application):
             self._failure = None
         else:
             self._failure = _MESSAGES.get(type(error), "COULD NOT READ PRS")
-            log.error("Pull request fetch failed: %s", error)
+            if type(error) not in _MESSAGES:
+                log.exception("Pull request fetch failed unexpectedly", exc_info=error)
+            else:
+                log.error("Pull request fetch failed: %s", error)
         self._render()
         return GLib.SOURCE_REMOVE
 

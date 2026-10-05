@@ -112,7 +112,11 @@ class PullRequestFetcher:
     def _resolve(self) -> Path | None:
         """The `gh` executable: a path as given, or a bare name looked up by hand then on PATH."""
         if "/" in self._command:
-            candidate = Path(self._command).expanduser()
+            try:
+                candidate = Path(self._command).expanduser()
+            except RuntimeError:
+                # `~nosuchuser/bin/gh` has no home directory to expand to.
+                return None
             return candidate if _is_executable(candidate) else None
 
         for directory in _INSTALL_DIRECTORIES:

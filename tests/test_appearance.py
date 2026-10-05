@@ -153,3 +153,39 @@ def test_saving_the_appearance_keeps_a_hand_edited_cli_command(store):
 
     store.save(CockpitAppearance(title="work"))
     assert store.load_cli_command() == "gh-work"
+
+
+@pytest.mark.parametrize(
+    "value, uses_the_variable",
+    [("/tmp/xdg", True), ("relative/path", False), ("", False)],
+)
+def test_the_config_directory_ignores_an_empty_or_relative_xdg_config_home(
+    monkeypatch, value, uses_the_variable
+):
+    # The XDG spec says a value that is unset, empty or relative is to be ignored.
+    import importlib
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", value)
+    module = importlib.reload(importlib.import_module("cockpit_core.appearance"))
+    try:
+        path = module.default_config_path()
+        assert path.is_absolute()
+        assert path.is_relative_to(value) is uses_the_variable
+    finally:
+        monkeypatch.undo()
+        importlib.reload(module)
+
+
+def test_the_config_directory_falls_back_to_dot_config(monkeypatch):
+    import importlib
+    from pathlib import Path
+
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    module = importlib.reload(importlib.import_module("cockpit_core.appearance"))
+    try:
+        assert module.default_config_path() == (
+            Path.home() / ".config/github-cockpit/config.json"
+        )
+    finally:
+        monkeypatch.undo()
+        importlib.reload(module)
