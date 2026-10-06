@@ -96,7 +96,8 @@ The widget only ever shows pull requests it actually read from GitHub.
 | `READING PULL REQUESTS` | The first read is in progress. |
 | `GH CLI NOT FOUND` | The `gh` executable was not found. See [Troubleshooting](#troubleshooting). |
 | `TIMED OUT` | `gh` did not answer within 20 seconds. |
-| `NOT SIGNED IN` | `gh` is installed but not signed in. Run `gh auth login`. |
+| `NOT SIGNED IN` | `gh` is installed but not signed in, or not to the chosen account. Run `gh auth login`. |
+| `NO ACCESS` | An organization refuses the account, for example until SAML SSO is authorized. |
 | `COULD NOT READ PRS` | `gh` exited with an error, for example with no network. |
 | `UNRECOGNIZED OUTPUT` | `gh` answered, but not with a list of pull requests. |
 
@@ -126,8 +127,19 @@ defaults write local.github-cockpit glowColor "#FF9A3D"
 
 ## Using another GitHub account
 
-`gh` is signed in to one account at a time. To read a different one, point the widget at a
-wrapper that selects it, and relaunch:
+Sign each account in to `gh` once, with `gh auth login`. When `gh` holds more than one
+github.com account, the card's right-click menu gains an **Account** submenu, and the header
+shows `@login` for the account on screen. Picking another account takes effect at once and
+is remembered across launches.
+
+Switching here never changes the account `gh` has active, so terminals keep pushing as
+before. For each call, the widget reads the chosen account's token from the keyring with
+`gh auth token --user <login>` and hands it to that one `gh` process; it is never written
+down, logged or kept between calls. `GH_TOKEN` and `GITHUB_TOKEN` inherited from the
+environment are dropped, so a stray token cannot override the account the menu shows.
+
+For a setup the menu does not cover, such as a separate `gh` configuration, point the widget
+at a wrapper and relaunch:
 
 ```sh
 defaults write local.github-cockpit cliCommand gh-work
@@ -165,8 +177,10 @@ gh api graphql -f query=… -f ids[]=… -f ids[]=…
 
 If that call fails, the card is unaffected; the failure is only logged.
 
-The app makes no network requests of its own and never touches your token; signing in is
-entirely `gh`'s business.
+The app makes no network requests of its own and stores no token; signing in is
+entirely `gh`'s business. With a chosen account, each call is preceded by
+`gh auth token --user <login>`, and a refresh also runs `gh auth status --json hosts` to list
+the accounts for the menu.
 
 ## Troubleshooting
 

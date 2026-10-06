@@ -78,6 +78,7 @@ public struct AppearanceStore {
         static let border = "borderColor"
         static let glow = "glowColor"
         static let offered = "hasOfferedCustomization"
+        static let account = "account"
     }
 
     private let defaults: UserDefaults
@@ -107,6 +108,12 @@ public struct AppearanceStore {
     public var hasOfferedCustomization: Bool {
         get { defaults.bool(forKey: Key.offered) }
         nonmutating set { defaults.set(newValue, forKey: Key.offered) }
+    }
+
+    /// The account the card reads as, or nil for the one `gh` has active. Not part of the look, so `reset` keeps it.
+    public var account: String? {
+        get { defaults.string(forKey: Key.account).flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 } }
+        nonmutating set { defaults.set(newValue, forKey: Key.account) }
     }
 
     public func reset() {

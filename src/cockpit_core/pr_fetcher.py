@@ -7,6 +7,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from .accounts import HOST
 from .comments import COMMENTS_QUERY
 
 #: Only what the card draws, so the reply stays small.
@@ -19,6 +20,9 @@ _INSTALL_DIRECTORIES = (
     Path("/usr/local/bin"),
     Path("/usr/bin"),
 )
+
+#: Each would override the account `gh` was asked for, or the one it has active, unseen.
+_TOKEN_VARIABLES = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
 
 
 class FetchError(Exception):
@@ -37,6 +41,10 @@ class NotAuthenticated(FetchError):
     """`gh` is installed but not signed in."""
 
 
+class NoAccess(FetchError):
+    """`gh` is signed in, but an organization refuses the account, such as for SAML SSO."""
+
+
 class CommandFailed(FetchError):
     """`gh` exited with an error for some other reason."""
 
@@ -49,12 +57,29 @@ class PullRequestFetcher:
 
     The command is resolved on each fetch, so a CLI installed while the widget runs is
     picked up without a restart.
+
+    With an `account`, each call runs as that account without switching the one `gh` has
+    active, which terminals keep using: its token is read from the keyring for that call and
+    handed only to that one process, never stored or logged.
     """
 
-    def __init__(self, command: str = "gh", timeout: float = 20, limit: int = 5) -> None:
+    def __init__(
+        self, command: str = "gh", account: str | None = None, timeout: float = 20, limit: int = 5
+    ) -> None:
         self._command = command
+        self._account = account
         self._timeout = timeout
         self._limit = limit
+
+    @property
+    def account(self) -> str | None:
+        """The account every call runs as, or None for the one `gh` has active."""
+        return self._account
+
+    def fetch_accounts(self) -> str:
+        """Raw JSON for the github.com accounts `gh` is signed in to; no token is asked for."""
+        arguments = ["auth", "status", "--json", "hosts", "--hostname", HOST]
+        return self._run(arguments, as_account=False)
 
     def fetch_mine(self) -> str:
         """Raw JSON for the open pull requests the signed-in user opened."""
@@ -80,13 +105,34 @@ class PullRequestFetcher:
             "--sort=updated",
         ])
 
-    def _run(self, arguments: list[str]) -> str:
+    def _run(self, arguments: list[str], as_account: bool = True) -> str:
         executable = self._resolve()
         if executable is None:
             raise CliNotFound(self._command)
 
-        # A pager or a colored answer would both corrupt the JSON.
-        environment = {**os.environ, "GH_PAGER": "cat", "NO_COLOR": "1", "CLICOLOR": "0"}
+        environment = {
+            **{name: value for name, value in os.environ.items() if name not in _TOKEN_VARIABLES},
+            # A pager or a colored answer would both corrupt the JSON.
+            "GH_PAGER": "cat",
+            "NO_COLOR": "1",
+            "CLICOLOR": "0",
+        }
+        if as_account and self._account is not None:
+            environment["GH_TOKEN"] = self._token(executable, environment)
+        return self._execute(executable, arguments, environment)
+
+    def _token(self, executable: Path, environment: dict[str, str]) -> str:
+        """The keyring's token for the chosen account."""
+        arguments = ["auth", "token", "--hostname", HOST, "--user", self._account]
+        try:
+            token = self._execute(executable, arguments, environment).strip()
+        except CommandFailed as error:
+            raise NotAuthenticated(f"{self._account}: {error}") from error
+        if not token:
+            raise NotAuthenticated(f"{self._account}: no token")
+        return token
+
+    def _execute(self, executable: Path, arguments: list[str], environment: dict[str, str]) -> str:
         try:
             finished = subprocess.run(
                 [str(executable), *arguments],
@@ -106,6 +152,8 @@ class PullRequestFetcher:
             message = (finished.stderr or finished.stdout or "").strip()
             if _is_authentication_failure(message):
                 raise NotAuthenticated(message)
+            if _is_access_refusal(message):
+                raise NoAccess(message)
             raise CommandFailed(f"exit {finished.returncode}: {message}")
         return finished.stdout
 
@@ -132,6 +180,18 @@ def _is_executable(path: Path) -> bool:
     return path.is_file() and os.access(path, os.X_OK)
 
 
+_AUTHENTICATION_FAILURES = (
+    "gh auth login", "authentication", "not logged", "no oauth token", "bad credentials",
+    "401 unauthorized", "http 401",
+)
+_ACCESS_REFUSALS = ("saml", "resource not accessible")
+
+
 def _is_authentication_failure(message: str) -> bool:
     lowered = message.lower()
-    return "gh auth login" in lowered or "authentication" in lowered or "not logged" in lowered
+    return any(marker in lowered for marker in _AUTHENTICATION_FAILURES)
+
+
+def _is_access_refusal(message: str) -> bool:
+    lowered = message.lower()
+    return any(marker in lowered for marker in _ACCESS_REFUSALS)

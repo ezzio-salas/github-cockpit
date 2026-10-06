@@ -142,6 +142,30 @@ def test_the_github_cli_is_gh_unless_the_file_names_another(store):
     assert store.load_cli_command() == "~/.local/bin/gh-work"
 
 
+def test_no_account_is_chosen_until_one_is(store):
+    assert store.account is None
+
+    store.account = "work"
+    assert store.account == "work"
+
+    store.account = None
+    assert store.account is None
+    assert "account" not in json.loads(store.path.read_text())
+
+
+def test_choosing_an_account_keeps_the_rest_of_the_file(store):
+    store.save_placement(40, 20)
+    store.account = "work"
+    assert store.load_placement() == (40, 20)
+
+
+@pytest.mark.parametrize("value", ['""', '"  "', "17", "true"])
+def test_an_account_that_is_not_a_login_means_none_is_chosen(store, value):
+    store.path.parent.mkdir(parents=True, exist_ok=True)
+    store.path.write_text("{\"account\": %s}" % value)
+    assert store.account is None
+
+
 @pytest.mark.parametrize("value", ['""', '"  "', "17", "null", "true"])
 def test_a_cli_command_that_is_not_a_name_falls_back_to_gh(store, value):
     store.path.parent.mkdir(parents=True, exist_ok=True)
@@ -191,16 +215,18 @@ def test_reset_puts_the_look_back_to_the_defaults(store):
     assert store.load() == CockpitAppearance()
 
 
-def test_reset_leaves_the_position_and_the_cli_alone(store):
+def test_reset_leaves_the_position_the_account_and_the_cli_alone(store):
     # Reset to Defaults is about the look; it should not move the card or sign it out.
     store.path.parent.mkdir(parents=True, exist_ok=True)
     store.path.write_text(json.dumps({"cliCommand": "gh-work"}))
     store.save_placement(40, 20)
+    store.account = "work"
     store.save(CockpitAppearance(title="work"))
 
     store.reset()
 
     assert store.load_placement() == (40, 20)
+    assert store.account == "work"
     assert store.load_cli_command() == "gh-work"
 
 

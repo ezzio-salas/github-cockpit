@@ -96,6 +96,78 @@ final class PullRequestFetcherTests: XCTestCase {
         XCTAssertEqual(result, .failure(.failed(exitCode: 1, output: "could not connect")))
     }
 
+    /// Answers `gh auth token` with a token naming the account, and anything else with the GH_TOKEN it was given,
+    /// so a test sees which account a call ran as.
+    private static let tokenByAccount = #"""
+    if [ "$1 $2" = "auth token" ]; then
+      [ "$6" = "signed-out" ] && { echo "no oauth token found for github.com account $6" >&2; exit 1; }
+      echo "token-for-$6:$3=$4"
+      exit 0
+    fi
+    printf '%s' "${GH_TOKEN-unset}"
+    """#
+
+    func testAChosenAccountRunsWithThatAccountsTokenFromTheKeyring() async throws {
+        let fetcher = PullRequestFetcher(command: try fakeCLI(Self.tokenByAccount).path, account: "work")
+
+        let mine = await fetcher.fetchMine()
+        let comments = await fetcher.fetchComments(nodeIDs: ["PR_a"])
+
+        XCTAssertEqual(mine, .success("token-for-work:--hostname=github.com"))
+        XCTAssertEqual(comments, .success("token-for-work:--hostname=github.com"))
+    }
+
+    func testAChosenAccountThatIsSignedOutIsReportedAsNotSignedIn() async throws {
+        let fetcher = PullRequestFetcher(command: try fakeCLI(Self.tokenByAccount).path, account: "signed-out")
+
+        let result = await fetcher.fetchMine()
+
+        XCTAssertEqual(result, .failure(.notAuthenticated("no oauth token found for github.com account signed-out")))
+    }
+
+    func testWithoutAChosenAccountTheCLIPicksItsOwn() async throws {
+        let result = await PullRequestFetcher(command: try fakeCLI(Self.tokenByAccount).path).fetchMine()
+
+        XCTAssertEqual(result, .success("unset"))
+    }
+
+    func testATokenInheritedFromTheEnvironmentNeverReachesTheCLI() async throws {
+        // Either would silently override the account the menu shows as chosen. The test runner's own environment
+        // is what the fetcher inherits, so it is set there for the length of the test.
+        let names = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"]
+        names.forEach { setenv($0, "inherited", 1) }
+        defer { names.forEach { unsetenv($0) } }
+        let cli = try fakeCLI(#"env | grep -E '^(GH|GITHUB)_(ENTERPRISE_)?TOKEN=' || printf none"#)
+
+        let result = await PullRequestFetcher(command: cli.path).fetchMine()
+
+        XCTAssertEqual(result, .success("none"))
+    }
+
+    func testAsksForTheSignedInAccountsWithoutTheirTokens() async throws {
+        let cli = try fakeCLI(#"printf '[%s]' "$@" "${GH_TOKEN-unset}""#)
+
+        let result = await PullRequestFetcher(command: cli.path, account: "work").fetchAccounts()
+
+        XCTAssertEqual(result, .success("[auth][status][--json][hosts][--hostname][github.com][unset]"))
+    }
+
+    func testBadCredentialsAreReportedAsNotSignedIn() async throws {
+        let cli = try fakeCLI("echo 'non-200 OK status code: 401 Unauthorized body: Bad credentials' >&2\nexit 1")
+
+        let result = await PullRequestFetcher(command: cli.path).fetchMine()
+
+        XCTAssertEqual(result, .failure(.notAuthenticated("non-200 OK status code: 401 Unauthorized body: Bad credentials")))
+    }
+
+    func testAnOrganizationRefusingTheAccountIsReportedAsNoAccess() async throws {
+        let cli = try fakeCLI("echo 'Resource protected by organization SAML enforcement.' >&2\nexit 1")
+
+        let result = await PullRequestFetcher(command: cli.path).fetchMine()
+
+        XCTAssertEqual(result, .failure(.noAccess("Resource protected by organization SAML enforcement.")))
+    }
+
     func testACLIThatNeverAnswersIsGivenUpOnInTime() async throws {
         let cli = try fakeCLI("trap '' TERM\nsleep 5")
         let started = Date()

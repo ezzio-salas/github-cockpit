@@ -50,6 +50,8 @@ class CockpitPanel(Gtk.ApplicationWindow):
         self._drag_origin: tuple[int, int] | None = None
         #: Called after the card has been dragged to a new place.
         self.on_moved: Callable[[], None] | None = None
+        #: The logins the card's menu offers to switch between; empty hides the choice.
+        self.accounts: tuple[str, ...] = ()
 
         self.set_decorated(False)
         self.set_resizable(False)
@@ -210,6 +212,13 @@ class CockpitPanel(Gtk.ApplicationWindow):
             menu.append_section(None, row)
 
         card = Gio.Menu()
+        if self.accounts:
+            accounts = Gio.Menu()
+            for login in self.accounts:
+                item = Gio.MenuItem.new(f"@{login}", None)
+                item.set_action_and_target_value("app.account", GLib.Variant.new_string(login))
+                accounts.append_item(item)
+            card.append_submenu("Account", accounts)
         card.append("Refresh", "app.refresh")
         card.append("Open GitHub Pull Requests", "app.open-github")
         card.append("Customize…", "app.customize")
