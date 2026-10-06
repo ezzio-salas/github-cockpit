@@ -125,8 +125,8 @@ class AppearanceStore:
     def reset(self) -> None:
         """Puts the title and the three colors back to their defaults.
 
-        Only those: the position and the chosen CLI are not part of the look, so Reset to
-        Defaults does not move the card or sign it in to another account.
+        Only those: the position, the chosen account and the chosen CLI are not part of the
+        look, so Reset to Defaults does not move the card or sign it in to another account.
         """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         kept = {k: v for k, v in self._read().items() if k not in _APPEARANCE_KEYS}
@@ -141,6 +141,18 @@ class AppearanceStore:
     def has_offered_customization(self, value: bool) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._write({**self._read(), "hasOfferedCustomization": bool(value)})
+
+    @property
+    def account(self) -> str | None:
+        """The account the card reads as, or None for the one `gh` has active."""
+        stored = self._read().get("account")
+        return stored if isinstance(stored, str) and stored.strip() else None
+
+    @account.setter
+    def account(self, login: str | None) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        kept = {k: v for k, v in self._read().items() if k != "account"}
+        self._write(kept if login is None else {**kept, "account": login})
 
     def load_cli_command(self) -> str:
         """The GitHub CLI to run; a wrapper selecting another account can be named here."""

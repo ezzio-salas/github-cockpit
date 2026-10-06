@@ -27,8 +27,11 @@ In scope:
   and previewing a pull request's latest comment while the pointer rests on its row.
 - A Personalize window for the title and the three colors, on both platforms.
 
-Out of scope: issues, review state, CI status, system notifications, comment counts, more
-than one account, a queue long enough to scroll.
+- Switching between the github.com accounts `gh` is signed in to, from the card's menu,
+  without changing the account `gh` has active.
+
+Out of scope: issues, review state, CI status, system notifications, comment counts, a queue
+long enough to scroll.
 
 ## Data source
 
@@ -44,7 +47,14 @@ gh search prs --review-requested=@me --state=open --limit=5 --sort=updated --jso
 - `--json=number,title,repository,url,isDraft,updatedAt` asks only for what the card draws.
 - `GH_PAGER=cat` and `NO_COLOR=1` are set, because a pager or color codes would corrupt the
   JSON. stdin is `/dev/null`, so a CLI that decides to prompt fails fast instead of hanging.
-- Authentication is whatever `gh` already has; the widget never touches a token.
+- Authentication is whatever `gh` already has. With an account chosen, each call is
+  preceded by `gh auth token --user <login>`, and the token is passed as `GH_TOKEN` to that
+  one process only — never stored or logged. Inherited `GH_TOKEN`/`GITHUB_TOKEN` are
+  dropped, so the card always reads as the account it shows.
+- `gh auth status --json hosts` lists the accounts for the menu; it reports where tokens
+  live, never the tokens.
+- A switch drops everything read as the previous account, and an answer that arrives for
+  an account switched away from is discarded.
 
 Example answer:
 
@@ -173,8 +183,8 @@ card keeps refreshing behind it, and every change is saved and applied at once.
   field reads as nothing chosen rather than as a value the person typed.
 - A flag guards the fields while they are repopulated, so filling them in does not save
   over what is being loaded.
-- `AppearanceStore.reset` clears only the four appearance keys. The position and the chosen
-  CLI are not part of the look, so Reset to Defaults does not move the card or sign it in to
+- `AppearanceStore.reset` clears only the four appearance keys. The position, the chosen
+  account and the chosen CLI are not part of the look, so Reset to Defaults does not move the card or sign it in to
   another account.
 - `hasOfferedCustomization` in the config file records that the window has been shown, so a
   first launch offers it once and later launches do not.
@@ -250,7 +260,8 @@ A failed comment read is logged and changes nothing on the card.
 | `READING PULL REQUESTS` | The first read is in progress. |
 | `GH CLI NOT FOUND` | The `gh` executable was not found. |
 | `TIMED OUT` | `gh` did not answer within 20 seconds. |
-| `NOT SIGNED IN` | `gh` is installed but not authenticated. |
+| `NOT SIGNED IN` | `gh` is installed but not authenticated, or not as the chosen account. |
+| `NO ACCESS` | An organization refuses the account, such as for SAML SSO. |
 | `COULD NOT READ PRS` | `gh` exited with an error. |
 | `UNRECOGNIZED OUTPUT` | `gh` answered, but not with a list of pull requests. |
 

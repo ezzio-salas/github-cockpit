@@ -12,9 +12,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let noticeDuration: TimeInterval = 2
 
     private let log = Logger(subsystem: "local.github-cockpit", category: "pull-requests")
-    /// `defaults write local.github-cockpit cliCommand <name or path>` points the widget at another CLI.
-    private let fetcher = PullRequestFetcher(command: UserDefaults.standard.string(forKey: "cliCommand") ?? "gh")
     private let appearanceStore = AppearanceStore()
+    private lazy var fetcher = makeFetcher(account: appearanceStore.account)
+    /// The github.com accounts `gh` is signed in to, as of the latest poll.
+    private var accounts: [GitHubAccount] = []
+    /// Offers the accounts to switch between; hidden while there is only one.
+    private let accountMenuItem = NSMenuItem(title: "Account", action: nil, keyEquivalent: "")
     private lazy var customization = CustomizationWindowController(store: appearanceStore) { [weak self] in
         self?.panel.apply($0)
         self?.render()
@@ -96,27 +99,88 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(Self.pullRequestsPage)
     }
 
+    // MARK: - Accounts
+
+    /// `defaults write local.github-cockpit cliCommand <name or path>` points the widget at another CLI.
+    private func makeFetcher(account: String?) -> PullRequestFetcher {
+        PullRequestFetcher(command: UserDefaults.standard.string(forKey: "cliCommand") ?? "gh", account: account)
+    }
+
+    /// The login the card reads as: the chosen one, else the one `gh` has active.
+    private var account: String? {
+        fetcher.account ?? accounts.first(where: \.isActive)?.login
+    }
+
+    /// Reads as the chosen login from the next fetch on, leaving `gh`'s active account alone. Everything read as
+    /// the previous account is dropped, so none of it is ever shown under the new one.
+    @objc private func switchAccount(_ sender: NSMenuItem) {
+        guard let login = sender.representedObject as? String, login != account else { return }
+        appearanceStore.account = login
+        fetcher = makeFetcher(account: login)
+        lastReading = nil
+        failure = nil
+        comments = nil
+        commentWatch = CommentWatch()
+        announced = nil
+        previewed = nil
+        bubble.dismiss()
+        updateAccountMenu()
+        refresh()
+    }
+
+    private func updateAccountMenu() {
+        let menu = NSMenu()
+        for login in accounts.map(\.login) {
+            let item = NSMenuItem(title: "@\(login)", action: #selector(switchAccount(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = login
+            item.state = login == account ? .on : .off
+            menu.addItem(item)
+        }
+        accountMenuItem.submenu = menu
+        accountMenuItem.isHidden = accounts.count < 2
+    }
+
+    // MARK: - Polling
+
     /// Starts a fetch unless one is already running, so polls never pile up.
+    ///
+    /// Every answer is checked against the account it was read as, so one read as an account switched away from
+    /// meanwhile is dropped.
     @objc private func refresh() {
         guard !isFetching else { return }
         isFetching = true
         render()
 
+        let fetcher = fetcher
         Task { @MainActor in
+            async let accountList = fetcher.fetchAccounts()
             async let mine = fetcher.fetchMine()
             async let review = fetcher.fetchReviewRequested()
+            switch await accountList {
+            case .success(let raw):
+                accounts = AccountParser.parse(raw)
+                updateAccountMenu()
+            case .failure(let error):
+                // The list only feeds the menu; the pull requests report the same failure.
+                log.error("Account list failed: \(String(describing: error), privacy: .public)")
+            }
             let mineResult = await mine
             let reviewResult = await review
             isFetching = false
+            guard fetcher.account == self.fetcher.account else {
+                refresh()
+                return
+            }
             record(Self.sections(mine: mineResult, review: reviewResult))
             render()
-            await announceNewComment()
+            await announceNewComment(using: fetcher)
         }
     }
 
     /// Reads the latest comments on the pull requests the card shows and bubbles up the newest one that is
     /// news. A failure here is only logged: the card never depends on it.
-    @MainActor private func announceNewComment() async {
+    @MainActor private func announceNewComment(using fetcher: PullRequestFetcher) async {
         guard failure == nil, let lastReading else { return }
         let nodeIDs = lastReading.sections.flatMap(\.pullRequests).compactMap(\.nodeID)
         guard !nodeIDs.isEmpty else { return }
@@ -128,6 +192,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             log.error("Comment fetch failed: \(String(describing: error), privacy: .public)")
             return
         }
+        guard fetcher.account == self.fetcher.account else { return }
         comments = reading
         guard let comment = commentWatch.announce(reading) else { return }
         announced = comment
@@ -208,6 +273,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             status = "SYNC"
         } else if isStale, let lastReading {
             status = "STALE · \(RelativeTime.compact(now.timeIntervalSince(lastReading.takenAt)))"
+        } else if accounts.count > 1, let account {
+            // With accounts to choose from, the card always says which one it shows.
+            status = "@\(account)"
         } else {
             status = ""
         }
@@ -260,6 +328,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
+        updateAccountMenu()
+        menu.addItem(accountMenuItem)
         menu.addItem(withTitle: "Refresh", action: #selector(refresh), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Open GitHub Pull Requests", action: #selector(openPullRequestsPage), keyEquivalent: "")
             .target = self
@@ -289,6 +359,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case PullRequestFetcher.FetchError.cliNotFound: return "GH CLI NOT FOUND"
         case PullRequestFetcher.FetchError.timedOut: return "TIMED OUT"
         case PullRequestFetcher.FetchError.notAuthenticated: return "NOT SIGNED IN"
+        case PullRequestFetcher.FetchError.noAccess: return "NO ACCESS"
         case is PullRequestParser.ParseError: return "UNRECOGNIZED OUTPUT"
         default: return "COULD NOT READ PRS"
         }

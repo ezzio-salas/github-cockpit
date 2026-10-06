@@ -142,6 +142,30 @@ final class AppearanceStoreTests: XCTestCase {
         XCTAssertTrue(AppearanceStore(defaults: defaults).hasOfferedCustomization)
     }
 
+    func testNoAccountIsChosenUntilOneIs() {
+        XCTAssertNil(store.account)
+
+        store.account = "work"
+        XCTAssertEqual(AppearanceStore(defaults: defaults).account, "work")
+
+        store.account = nil
+        XCTAssertNil(store.account)
+    }
+
+    func testABlankAccountMeansNoneIsChosen() {
+        defaults.set("  ", forKey: "account")
+
+        XCTAssertNil(store.account)
+    }
+
+    func testResetKeepsTheChosenAccount() {
+        store.account = "work"
+
+        store.reset()
+
+        XCTAssertEqual(store.account, "work")
+    }
+
     func testResetDoesNotOfferCustomizationAgain() {
         store.hasOfferedCustomization = true
 

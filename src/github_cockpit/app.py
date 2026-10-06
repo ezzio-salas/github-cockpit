@@ -13,6 +13,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
+from cockpit_core.accounts import GitHubAccount, parse_accounts
 from cockpit_core.appearance import AppearanceStore
 from cockpit_core.comments import (
     CommentReading,
@@ -24,6 +25,7 @@ from cockpit_core.pr_fetcher import (
     CliNotFound,
     CommandFailed,
     FetchError,
+    NoAccess,
     NotAuthenticated,
     PullRequestFetcher,
     TimedOut,
@@ -58,6 +60,7 @@ _MESSAGES = {
     CliNotFound: "GH CLI NOT FOUND",
     TimedOut: "TIMED OUT",
     NotAuthenticated: "NOT SIGNED IN",
+    NoAccess: "NO ACCESS",
     CommandFailed: "COULD NOT READ PRS",
     ParseError: "UNRECOGNIZED OUTPUT",
 }
@@ -69,7 +72,9 @@ class CockpitApplication(Gtk.Application):
             application_id=APPLICATION_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS
         )
         self._store = AppearanceStore()
-        self._fetcher = PullRequestFetcher(command=self._store.load_cli_command())
+        self._fetcher = self._make_fetcher(self._store.account)
+        #: The github.com accounts `gh` is signed in to, as of the latest poll.
+        self._accounts: tuple[GitHubAccount, ...] = ()
         self._panel: CockpitPanel | None = None
         self._customize: CustomizeWindow | None = None
         self._bubble: CommentBubble | None = None
@@ -114,6 +119,14 @@ class CockpitApplication(Gtk.Application):
             action = Gio.SimpleAction.new(name, GLib.VariantType.new("s"))
             action.connect("activate", handler)
             self.add_action(action)
+        # Stateful, so the menu marks the account being read; its state is that login.
+        self._account_action = Gio.SimpleAction.new_stateful(
+            "account", GLib.VariantType.new("s"), GLib.Variant.new_string("")
+        )
+        self._account_action.connect(
+            "activate", lambda _action, login: self._switch_account(login.get_string())
+        )
+        self.add_action(self._account_action)
 
     def _quit_on_signals(self) -> None:
         """Leaves quietly on Ctrl+C or a stop from the service manager.
@@ -175,6 +188,52 @@ class CockpitApplication(Gtk.Application):
         self._store.has_offered_customization = True
         self.show_customization()
 
+    # MARK: - Accounts
+
+    def _make_fetcher(self, account: str | None) -> PullRequestFetcher:
+        return PullRequestFetcher(command=self._store.load_cli_command(), account=account)
+
+    @property
+    def _account(self) -> str | None:
+        """The login the card reads as: the chosen one, else the one `gh` has active."""
+        if self._fetcher.account is not None:
+            return self._fetcher.account
+        return next((account.login for account in self._accounts if account.is_active), None)
+
+    def _switch_account(self, login: str) -> None:
+        """Reads as `login` from the next fetch on, leaving `gh`'s active account alone.
+
+        Everything read as the previous account is dropped, so none of it is ever shown
+        under the new one.
+        """
+        if login == self._account:
+            return
+        self._store.account = login
+        self._fetcher = self._make_fetcher(login)
+        self._reading = None
+        self._failure = None
+        self._comments = None
+        self._comment_watch = CommentWatch()
+        self._announced = None
+        self._previewed = None
+        if self._bubble is not None:
+            self._bubble.dismiss()
+        self._show_accounts()
+        self.refresh()
+
+    def _on_accounts(self, accounts: tuple[GitHubAccount, ...]) -> bool:
+        self._accounts = accounts
+        self._show_accounts()
+        self._render()
+        return GLib.SOURCE_REMOVE
+
+    def _show_accounts(self) -> None:
+        self._account_action.set_state(GLib.Variant.new_string(self._account or ""))
+        if self._panel is not None:
+            # A single account leaves nothing to switch to, so the menu does not offer it.
+            logins = tuple(account.login for account in self._accounts)
+            self._panel.accounts = logins if len(logins) > 1 else ()
+
     # MARK: - Polling
 
     def _on_refresh_tick(self) -> bool:
@@ -191,26 +250,36 @@ class CockpitApplication(Gtk.Application):
             return
         self._is_fetching = True
         self._render()
-        threading.Thread(target=self._fetch, name="fetch", daemon=True).start()
+        fetch = threading.Thread(target=self._fetch, args=(self._fetcher,), name="fetch", daemon=True)
+        fetch.start()
 
-    def _fetch(self) -> None:
-        """Runs off the main loop; the answer is handed back to it with `idle_add`."""
+    def _fetch(self, fetcher: PullRequestFetcher) -> None:
+        """Runs off the main loop; the answer is handed back to it with `idle_add`.
+
+        Every answer carries the fetcher that read it, so one read as an account switched
+        away from meanwhile is recognized and dropped.
+        """
+        try:
+            GLib.idle_add(self._on_accounts, parse_accounts(fetcher.fetch_accounts()))
+        except FetchError as error:
+            # The list only feeds the menu; the pull requests below report the same failure.
+            log.warning("Account list failed: %s", error)
         try:
             sections = (
-                Section("MINE", tuple(parse(self._fetcher.fetch_mine()))),
-                Section("REVIEW", tuple(parse(self._fetcher.fetch_review_requested()))),
+                Section("MINE", tuple(parse(fetcher.fetch_mine()))),
+                Section("REVIEW", tuple(parse(fetcher.fetch_review_requested()))),
             )
-            GLib.idle_add(self._on_fetched, sections, None)
+            GLib.idle_add(self._on_fetched, fetcher, sections, None)
         except (FetchError, ParseError) as error:
-            GLib.idle_add(self._on_fetched, None, error)
+            GLib.idle_add(self._on_fetched, fetcher, None, error)
         except Exception as error:  # noqa: BLE001
             # Anything unforeseen still has to come back, or `_is_fetching` stays set and
             # the card sits on SYNC until it is restarted.
-            GLib.idle_add(self._on_fetched, None, error)
+            GLib.idle_add(self._on_fetched, fetcher, None, error)
             return
-        self._fetch_comments(sections)
+        self._fetch_comments(fetcher, sections)
 
-    def _fetch_comments(self, sections: tuple[Section, ...]) -> None:
+    def _fetch_comments(self, fetcher: PullRequestFetcher, sections: tuple[Section, ...]) -> None:
         """Reads the latest comments once the card already shows the pull requests.
 
         A failure here is only logged: the card never depends on it.
@@ -219,13 +288,15 @@ class CockpitApplication(Gtk.Application):
         if not node_ids:
             return
         try:
-            reading = parse_comments(self._fetcher.fetch_comments(node_ids))
+            reading = parse_comments(fetcher.fetch_comments(node_ids))
         except (FetchError, ParseError) as error:
             log.warning("Comment fetch failed: %s", error)
             return
-        GLib.idle_add(self._on_comments, reading)
+        GLib.idle_add(self._on_comments, fetcher, reading)
 
-    def _on_comments(self, reading: CommentReading) -> bool:
+    def _on_comments(self, fetcher: PullRequestFetcher, reading: CommentReading) -> bool:
+        if fetcher is not self._fetcher:
+            return GLib.SOURCE_REMOVE
         self._comments = reading
         comment = self._comment_watch.announce(reading)
         if comment is not None:
@@ -291,9 +362,16 @@ class CockpitApplication(Gtk.Application):
         )
 
     def _on_fetched(
-        self, sections: tuple[Section, ...] | None, error: Exception | None
+        self,
+        fetcher: PullRequestFetcher,
+        sections: tuple[Section, ...] | None,
+        error: Exception | None,
     ) -> bool:
         self._is_fetching = False
+        if fetcher is not self._fetcher:
+            # Read as an account switched away from; the new one is read instead.
+            self.refresh()
+            return GLib.SOURCE_REMOVE
         if sections is not None:
             self._reading = (sections, _now())
             self._failure = None
@@ -320,6 +398,9 @@ class CockpitApplication(Gtk.Application):
             status = "SYNC"
         elif is_stale and self._reading is not None:
             status = f"STALE · {compact((now - self._reading[1]).total_seconds())}"
+        elif len(self._accounts) > 1 and self._account is not None:
+            # With accounts to choose from, the card always says which one it shows.
+            status = f"@{self._account}"
         else:
             status = ""
 

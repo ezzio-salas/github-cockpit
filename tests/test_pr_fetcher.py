@@ -8,6 +8,7 @@ import pytest
 from cockpit_core.pr_fetcher import (
     CliNotFound,
     CommandFailed,
+    NoAccess,
     NotAuthenticated,
     PullRequestFetcher,
     TimedOut,
@@ -126,3 +127,65 @@ def test_a_command_under_a_home_that_does_not_exist_is_a_missing_cli(tmp_path):
     # than returning. Left untyped it would escape the poll and strand the card on SYNC.
     with pytest.raises(CliNotFound):
         PullRequestFetcher(command="~nosuchuser/bin/gh").fetch_mine()
+
+
+#: Answers `gh auth token` with a token naming the account, and anything else with what the
+#: CLI was given as GH_TOKEN, so a test sees which account a call ran as.
+TOKEN_BY_ACCOUNT = """
+if [ "$1 $2" = "auth token" ]; then
+  [ "$6" = "signed-out" ] && { echo "no oauth token found for github.com account $6" >&2; exit 1; }
+  echo "token-for-$6:$3=$4"
+  exit 0
+fi
+echo "${GH_TOKEN-unset}"
+"""
+
+
+def test_a_chosen_account_runs_with_that_accounts_token_from_the_keyring(tmp_path):
+    gh = fake_gh(tmp_path, TOKEN_BY_ACCOUNT)
+    fetcher = PullRequestFetcher(command=str(gh), account="work")
+
+    assert fetcher.fetch_mine().strip() == "token-for-work:--hostname=github.com"
+    assert fetcher.fetch_comments(["PR_a"]).strip() == "token-for-work:--hostname=github.com"
+
+
+def test_a_chosen_account_that_is_signed_out_is_reported_as_not_signed_in(tmp_path):
+    gh = fake_gh(tmp_path, TOKEN_BY_ACCOUNT)
+    with pytest.raises(NotAuthenticated):
+        PullRequestFetcher(command=str(gh), account="signed-out").fetch_mine()
+
+
+def test_without_a_chosen_account_the_cli_picks_its_own(tmp_path):
+    gh = fake_gh(tmp_path, TOKEN_BY_ACCOUNT)
+    assert PullRequestFetcher(command=str(gh)).fetch_mine().strip() == "unset"
+
+
+def test_a_token_inherited_from_the_environment_never_reaches_the_cli(tmp_path, monkeypatch):
+    # Either would silently override the account the menu shows as chosen.
+    for name in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"):
+        monkeypatch.setenv(name, "inherited")
+    gh = fake_gh(tmp_path, 'env | grep -E "^(GH|GITHUB)_(ENTERPRISE_)?TOKEN=" || echo none')
+
+    assert PullRequestFetcher(command=str(gh)).fetch_mine().strip() == "none"
+
+
+def test_asks_for_the_signed_in_accounts_without_their_tokens(tmp_path):
+    gh = fake_gh(tmp_path, 'printf "%s\\n" "$@"')
+    arguments = PullRequestFetcher(command=str(gh), account="work").fetch_accounts().split("\n")
+
+    assert arguments[:6] == ["auth", "status", "--json", "hosts", "--hostname", "github.com"]
+    assert "--show-token" not in arguments
+
+
+def test_bad_credentials_are_reported_as_not_signed_in(tmp_path):
+    message = "non-200 OK status code: 401 Unauthorized body: Bad credentials"
+    gh = fake_gh(tmp_path, f'echo "{message}" >&2\nexit 1')
+    with pytest.raises(NotAuthenticated):
+        PullRequestFetcher(command=str(gh)).fetch_mine()
+
+
+def test_an_organization_refusing_the_account_is_reported_as_no_access(tmp_path):
+    message = "Resource protected by organization SAML enforcement."
+    gh = fake_gh(tmp_path, f'echo "{message}" >&2\nexit 1')
+    with pytest.raises(NoAccess):
+        PullRequestFetcher(command=str(gh)).fetch_mine()
